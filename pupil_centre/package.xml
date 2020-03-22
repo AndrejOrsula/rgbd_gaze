@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>pupil_centre</name>
+  <version>0.0.0</version>
+  <description>Estimator of pupil centre position in 3D, based on color and depth images</description>
+  <maintainer email="orsula.andrej@gmail.com">Andrej Orsula</maintainer>
+  <author>Andrej Orsula</author>
+  <author>Asger Printz Madsen</author>
+  <license>BSD</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <build_depend>rclcpp</build_depend>
+  <exec_depend>rclcpp</exec_depend>
+
+  <build_depend>message_filters</build_depend>
+  <exec_depend>message_filters</exec_depend>
+
+  <build_depend>image_transport</build_depend>
+  <exec_depend>image_transport</exec_depend>
+
+  <build_depend>cv_bridge</build_depend>
+  <exec_depend>cv_bridge</exec_depend>
+
+  <build_depend>sensor_msgs</build_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+
+  <build_depend>eye_region_msgs</build_depend>
+  <exec_depend>eye_region_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -11,7 +11,7 @@
 #include <message_filters/sync_policies/exact_time.h>
 
 // ROS 2 interfaces
-#include <openface_msgs/msg/face_stamped.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <rgbd_gaze_msgs/msg/pupil_centres_stamped.hpp>
 
 //////////////////
@@ -34,7 +34,7 @@ const uint8_t SYNCHRONIZER_QUEUE_SIZE = 10;
 /////////////
 
 /// Policy of the synchronizer
-typedef message_filters::sync_policies::ExactTime<openface_msgs::msg::FaceStamped,
+typedef message_filters::sync_policies::ExactTime<geometry_msgs::msg::PoseStamped,
                                                   rgbd_gaze_msgs::msg::PupilCentresStamped>
     synchronizer_policy;
 
@@ -54,8 +54,8 @@ public:
   RgbdGaze();
 
 private:
-  /// Subscriber to the face, currently used only for head pose
-  message_filters::Subscriber<openface_msgs::msg::FaceStamped> sub_face_;
+  /// Subscriber to the head pose
+  message_filters::Subscriber<geometry_msgs::msg::PoseStamped> sub_head_pose_;
   /// Subscriber to pupil centres
   message_filters::Subscriber<rgbd_gaze_msgs::msg::PupilCentresStamped> sub_pupil_centres_;
 
@@ -63,14 +63,14 @@ private:
   message_filters::Synchronizer<synchronizer_policy> synchronizer_;
 
   /// Callback called each time a message is received on all topics
-  void synchronized_callback(const openface_msgs::msg::FaceStamped::SharedPtr face,
+  void synchronized_callback(const geometry_msgs::msg::PoseStamped::SharedPtr head_pose,
                              const rgbd_gaze_msgs::msg::PupilCentresStamped::SharedPtr pupil_centres);
 };
 
 RgbdGaze::RgbdGaze() : Node(NODE_NAME),
-                       sub_face_(this, "face"),
+                       sub_head_pose_(this, "head_pose"),
                        sub_pupil_centres_(this, "pupil_centres"),
-                       synchronizer_(synchronizer_policy(SYNCHRONIZER_QUEUE_SIZE), sub_face_, sub_pupil_centres_)
+                       synchronizer_(synchronizer_policy(SYNCHRONIZER_QUEUE_SIZE), sub_head_pose_, sub_pupil_centres_)
 {
   // Synchronize the subscriptions under a single callback
   synchronizer_.registerCallback(&RgbdGaze::synchronized_callback, this);
@@ -81,7 +81,7 @@ RgbdGaze::RgbdGaze() : Node(NODE_NAME),
   RCLCPP_INFO(this->get_logger(), "Node initialised");
 }
 
-void RgbdGaze::synchronized_callback(const openface_msgs::msg::FaceStamped::SharedPtr face,
+void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::SharedPtr head_pose,
                                      const rgbd_gaze_msgs::msg::PupilCentresStamped::SharedPtr pupil_centres)
 {
   RCLCPP_DEBUG(this->get_logger(), "Received synchronized messages for processing");

@@ -18,6 +18,7 @@
 
 // OpenCV
 #include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
 
 //////////////////
 /// NAMESPACES ///
@@ -33,6 +34,10 @@ using namespace std::placeholders;
 const std::string NODE_NAME = "pupil_centre";
 /// Size of the qeueu size used by the synchronizer in its policy
 const uint8_t SYNCHRONIZER_QUEUE_SIZE = 10;
+/// Extra infration of the eye region in horizontal direction, in pixels
+const uint8_t ROI_TO_RECT_PADDING_HORZIZONTAL = 5;
+/// Extra infration of the eye region in vertical direction, in pixels
+const uint8_t ROI_TO_RECT_PADDING_VERTICAL = 5;
 
 /////////////
 /// TYPES ///
@@ -48,9 +53,9 @@ typedef message_filters::sync_policies::ExactTime<sensor_msgs::msg::Image,
 /// HELPER FUNCTIONS ///
 ////////////////////////
 
-cv::Rect roi_to_rect(const sensor_msgs::msg::RegionOfInterest &roi)
+inline cv::Rect roi_to_rect(const sensor_msgs::msg::RegionOfInterest &roi, const uint8_t padding_horizontal = 0, const uint8_t padding_vertical = 0)
 {
-  return cv::Rect(roi.x_offset, roi.y_offset, roi.width, roi.height);
+  return cv::Rect(roi.x_offset - padding_horizontal, roi.y_offset - padding_vertical, roi.width + 2 * padding_horizontal, roi.height + 2 * padding_vertical);
 }
 
 //////////////////
@@ -116,8 +121,8 @@ void PupilCentre::synchronized_callback(const sensor_msgs::msg::Image::SharedPtr
   }
 
   // Convert eye ROIs to rectangles
-  cv::Rect roi_eye_left = roi_to_rect(msg_eyes->eyes.eye_left);
-  cv::Rect roi_eye_right = roi_to_rect(msg_eyes->eyes.eye_right);
+  cv::Rect roi_eye_left = roi_to_rect(msg_eyes->eyes.eye_left, ROI_TO_RECT_PADDING_HORZIZONTAL, ROI_TO_RECT_PADDING_VERTICAL);
+  cv::Rect roi_eye_right = roi_to_rect(msg_eyes->eyes.eye_right, ROI_TO_RECT_PADDING_HORZIZONTAL, ROI_TO_RECT_PADDING_VERTICAL);
 
   // Get the eye region images as cv::Mat, while being bounded to the ROI
   cv::Mat img_color_eye_left = img_color->image(roi_eye_left);

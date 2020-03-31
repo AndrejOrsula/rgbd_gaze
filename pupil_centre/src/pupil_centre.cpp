@@ -14,7 +14,9 @@
 
 // ROS 2 interfaces
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
 #include <eye_region_msgs/msg/eye_regions_of_interest_stamped.hpp>
+#include <rgbd_gaze_msgs/msg/pupil_centres_stamped.hpp>
 
 // OpenCV
 #include <opencv2/highgui/highgui.hpp>
@@ -39,6 +41,11 @@ const uint8_t ROI_TO_RECT_PADDING_HORZIZONTAL = 5;
 /// Extra infration of the eye region in vertical direction, in pixels
 const uint8_t ROI_TO_RECT_PADDING_VERTICAL = 5;
 
+/// Index of the left eye
+const uint8_t EYE_LEFT = 0;
+/// Index of the right eye
+const uint8_t EYE_RIGHT = 1;
+
 /////////////
 /// TYPES ///
 /////////////
@@ -46,6 +53,7 @@ const uint8_t ROI_TO_RECT_PADDING_VERTICAL = 5;
 /// Policy of the synchronizer
 typedef message_filters::sync_policies::ExactTime<sensor_msgs::msg::Image,
                                                   sensor_msgs::msg::Image,
+                                                  sensor_msgs::msg::CameraInfo,
                                                   eye_region_msgs::msg::EyeRegionsOfInterestStamped>
     synchronizer_policy;
 
@@ -74,26 +82,44 @@ private:
   image_transport::SubscriberFilter sub_color_;
   /// Subscriber to registered (aligned) depth frames
   image_transport::SubscriberFilter sub_depth_;
+  /// Subscriber to the camera info
+  message_filters::Subscriber<sensor_msgs::msg::CameraInfo> sub_camera_info_;
   /// Subscriber to the eye regions
   message_filters::Subscriber<eye_region_msgs::msg::EyeRegionsOfInterestStamped> sub_eyes_;
-
   /// Synchronizer of the subscribers
   message_filters::Synchronizer<synchronizer_policy> synchronizer_;
+
+  /// Publisher of the pupil centres
+  rclcpp::Publisher<rgbd_gaze_msgs::msg::PupilCentresStamped>::SharedPtr pub_pupil_centres_;
 
   /// Callback called each time a message is received on all topics
   void synchronized_callback(const sensor_msgs::msg::Image::SharedPtr msg_img_color,
                              const sensor_msgs::msg::Image::SharedPtr msg_img_depth,
+                             const sensor_msgs::msg::CameraInfo::SharedPtr msg_camera_info,
                              const eye_region_msgs::msg::EyeRegionsOfInterestStamped::SharedPtr msg_eyes);
+  /// Extract 3D position of a pixel from depth map
+  bool depth_px_to_xyz(
+      const cv::Mat &img_depth_rect,
+      cv::Vec3d &output,
+      const std::array<double, 9> &intrinsics,
+      const uint16_t x,
+      const uint16_t y,
+      const float depth_scale = 0.001);
 };
 
 PupilCentre::PupilCentre() : Node(NODE_NAME),
                              sub_color_(this, "camera/color/image_raw", "raw"),
                              sub_depth_(this, "camera/aligned_depth_to_color/image_raw", "raw"),
+                             sub_camera_info_(this, "camera/aligned_depth_to_color/camera_info"),
                              sub_eyes_(this, "eye_regions"),
-                             synchronizer_(synchronizer_policy(SYNCHRONIZER_QUEUE_SIZE), sub_color_, sub_depth_, sub_eyes_)
+                             synchronizer_(synchronizer_policy(SYNCHRONIZER_QUEUE_SIZE), sub_color_, sub_depth_, sub_camera_info_, sub_eyes_)
 {
   // Synchronize the subscriptions under a single callback
   synchronizer_.registerCallback(&PupilCentre::synchronized_callback, this);
+
+  // Register publisher of the pupil centres
+  rclcpp::QoS qos = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
+  pub_pupil_centres_ = this->create_publisher<rgbd_gaze_msgs::msg::PupilCentresStamped>("pupil_centres", qos);
 
   // Parameters of the element
   this->declare_parameter<bool>("visualise", true);
@@ -103,6 +129,7 @@ PupilCentre::PupilCentre() : Node(NODE_NAME),
 
 void PupilCentre::synchronized_callback(const sensor_msgs::msg::Image::SharedPtr msg_img_color,
                                         const sensor_msgs::msg::Image::SharedPtr msg_img_depth,
+                                        const sensor_msgs::msg::CameraInfo::SharedPtr msg_camera_info,
                                         const eye_region_msgs::msg::EyeRegionsOfInterestStamped::SharedPtr msg_eyes)
 {
   RCLCPP_DEBUG(this->get_logger(), "Received synchronized messages for processing");
@@ -120,25 +147,80 @@ void PupilCentre::synchronized_callback(const sensor_msgs::msg::Image::SharedPtr
     return;
   }
 
-  // Convert eye ROIs to rectangles
-  cv::Rect roi_eye_left = roi_to_rect(msg_eyes->eyes.eye_left, ROI_TO_RECT_PADDING_HORZIZONTAL, ROI_TO_RECT_PADDING_VERTICAL);
-  cv::Rect roi_eye_right = roi_to_rect(msg_eyes->eyes.eye_right, ROI_TO_RECT_PADDING_HORZIZONTAL, ROI_TO_RECT_PADDING_VERTICAL);
+  rgbd_gaze_msgs::msg::PupilCentresStamped pupil_centres;
+  pupil_centres.header = msg_img_color->header;
 
-  // Get the eye region images as cv::Mat, while being bounded to the ROI
-  cv::Mat img_color_eye_left = img_color->image(roi_eye_left);
-  cv::Mat img_color_eye_right = img_color->image(roi_eye_right);
-
-  // Visualise if desired
-  if (this->get_parameter("visualise").get_value<bool>())
+  cv::Mat img_color_eyes[2];
+  for (uint8_t eye = 0; eye < 2; eye++)
   {
-    cv::namedWindow("img_color_eye_left", cv::WINDOW_KEEPRATIO);
-    cv::namedWindow("img_color_eye_right", cv::WINDOW_KEEPRATIO);
-    cv::imshow("img_color_eye_left", img_color_eye_left);
-    cv::imshow("img_color_eye_right", img_color_eye_right);
-    cv::waitKey(1);
+    // Convert eye ROIs to rectangles
+    cv::Rect roi_eyes = roi_to_rect(msg_eyes->eyes.rois[eye], ROI_TO_RECT_PADDING_HORZIZONTAL, ROI_TO_RECT_PADDING_VERTICAL);
+
+    // Get the eye region images as cv::Mat, while being bounded to the ROI
+    img_color_eyes[eye] = img_color->image(roi_eyes);
+
+    // TODO: Implement pupil centre estimation
+
+    cv::Point2d pupil_centre; // <--- output
+
+    cv::Vec3d pupil;
+    auto ret = depth_px_to_xyz(img_depth->image, pupil, msg_camera_info->k, msg_eyes->eyes.rois[eye].x_offset + pupil_centre.x, msg_eyes->eyes.rois[eye].y_offset + pupil_centre.y);
+
+    // Place pupil centre into the message
+    pupil_centres.pupils.centres[eye].x = pupil[0];
+    pupil_centres.pupils.centres[eye].y = pupil[1];
+    pupil_centres.pupils.centres[eye].z = pupil[2];
+
+    // Publish the pupil centres
+    pub_pupil_centres_->publish(pupil_centres);
+
+    // Visualise if desired
+    if (this->get_parameter("visualise").get_value<bool>())
+    {
+      std::string eye_side;
+      if (eye == EYE_LEFT)
+      {
+        eye_side = "L";
+      }
+      else
+      {
+        eye_side = "R";
+      }
+      cv::namedWindow(eye_side + "_ROI", cv::WINDOW_KEEPRATIO);
+      cv::imshow(eye_side + "_ROI", img_color_eyes[EYE_LEFT]);
+
+      cv::waitKey(10);
+    }
+  }
+}
+
+bool PupilCentre::depth_px_to_xyz(
+    const cv::Mat &img_depth_rect,
+    cv::Vec3d &output,
+    const std::array<double, 9> &intrinsics,
+    const uint16_t x,
+    const uint16_t y,
+    const float depth_scale)
+{
+  if (x >= img_depth_rect.cols || y >= img_depth_rect.rows)
+  {
+    std::cerr << "depth_px_to_xyz() - Pixel out of bounds\n";
+    return false;
   }
 
-  // TODO: Implement pupil centre estimation
+  uint16_t z = img_depth_rect.at<uint16_t>(x, y);
+
+  if (z == 0)
+  {
+    return false;
+  }
+  else
+  {
+    output[2] = z * depth_scale;
+    output[0] = output[2] * ((x - intrinsics[2]) / intrinsics[0]);
+    output[1] = output[2] * ((y - intrinsics[5]) / intrinsics[4]);
+    return true;
+  }
 }
 
 ////////////

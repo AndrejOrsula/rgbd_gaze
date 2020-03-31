@@ -3,4 +3,4 @@
 # Standard header
 std_msgs/Header header
 # Centres of the pupils
-PupilCentres pupil_centres
+PupilCentres pupils

@@ -64,7 +64,7 @@ const bool CONSIDER_ONLY_SIGNIFICANT_GRADIENTS = true;
 /// Factor between 0.0 and 1.0 that determines minimum allowed magnitude of gradients that are included during computation of the objective function, valid only if `CONSIDER_ONLY_SIGNIFICANT_GRADIENTS` is set to true
 const double MINIMUM_GRADIENT_SIGNIFICANCE = 0.25;
 /// Determines the neighbourhood size around detected 2D pupil centre that is considered to estimation of its 3D position
-const uint16_t PUPIL_3D_NEIGHBOURHOOD_SIZE = 5;
+const uint8_t PUPIL_3D_NEIGHBOURHOOD_SIZE = 5;
 
 /// Delay used in the context of cv::waitKey, applicable only if visualisation is enabled
 const int CV_WAITKEY_DELAY = 10;
@@ -327,7 +327,6 @@ cv::Point3_<double> PupilCentre::localise_pupil(const cv::Mat_<uint8_t> &img_mon
 
   // Create output
   cv::Point3_<double> pupil_centre_3d = cv::Vec<double, 3>(0.0, 0.0, 0.0);
-  // Keep track of successfuly converted depth points to 3D position, i.e. valid depth pixels
   // Keep track of residual weights that failed to be applied
   double residuals = 0.0;
   // Iterate over the neighbourhood and compute 3D position for each pixel
@@ -338,8 +337,8 @@ cv::Point3_<double> PupilCentre::localise_pupil(const cv::Mat_<uint8_t> &img_mon
     for (uint16_t c = 0; c < objective_function_pupil_neighbourhood.cols; ++c)
     {
       cv::Point3_<double> sample;
-      cv::Point_<int16_t> pixel = cv::Point_<int16_t>(ROI_PADDING_HORZIZONTAL + eye_roi.x + pupil_centre.x - PUPIL_3D_NEIGHBOURHOOD_SIZE / 2,
-                                                      ROI_PADDING_VERTICAL + eye_roi.y + pupil_centre.y - PUPIL_3D_NEIGHBOURHOOD_SIZE / 2);
+      cv::Point_<int16_t> pixel = cv::Point_<int16_t>(ROI_PADDING_HORZIZONTAL + eye_roi.x + pupil_centre.x - PUPIL_3D_NEIGHBOURHOOD_SIZE / 2 + c,
+                                                      ROI_PADDING_VERTICAL + eye_roi.y + pupil_centre.y - PUPIL_3D_NEIGHBOURHOOD_SIZE / 2 + r);
       if (create_cloud_point(img_depth, sample, camera_matrix, pixel))
       {
         pupil_centre_3d += objective_function_pupil_neighbourhood_row_ptr[c] * sample;
@@ -523,7 +522,7 @@ bool PupilCentre::create_cloud_point(
 {
   if (pixel.x >= img_depth.cols || pixel.y >= img_depth.rows)
   {
-    RCLCPP_INFO(this->get_logger(), "create_cloud_point() - Pixel out of bounds");
+    RCLCPP_ERROR(this->get_logger(), "create_cloud_point() - Pixel out of bounds");
     return false;
   }
 

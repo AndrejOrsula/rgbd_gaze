@@ -35,6 +35,9 @@ find_package(rgbd_gaze_msgs REQUIRED)
 # OpenCV 4
 find_package(OpenCV 4 REQUIRED)
 
+# OpenMP (optional)
+find_package(OpenMP)
+
 # Include directories
 include_directories(include ${OpenCV_INCLUDE_DIRS})
 
@@ -44,6 +47,9 @@ set(EXECUTABLE_0 pupil_centre)
 # Executable 0
 add_executable(${EXECUTABLE_0} src/${EXECUTABLE_0}.cpp)
 target_link_libraries(${EXECUTABLE_0} ${OpenCV_LIBRARIES})
+if(OpenMP_CXX_FOUND)
+  target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX)
+endif()
 ament_target_dependencies(
   ${EXECUTABLE_0}
   rclcpp

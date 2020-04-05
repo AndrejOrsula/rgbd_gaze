@@ -1,4 +1,4 @@
-/// Estimator of the pupil centre position in 3D, using color and depth images
+/// Estimator of pupil centre position in 3D
 
 ////////////////////
 /// DEPENDENCIES ///
@@ -35,16 +35,39 @@ using namespace std::placeholders;
 /// The name of this node
 const std::string NODE_NAME = "pupil_centre";
 /// Size of the qeueu size used by the synchronizer in its policy
-const uint8_t SYNCHRONIZER_QUEUE_SIZE = 10;
-/// Extra infration of the eye region in horizontal direction, in pixels
-const uint8_t ROI_TO_RECT_PADDING_HORZIZONTAL = 5;
-/// Extra infration of the eye region in vertical direction, in pixels
-const uint8_t ROI_TO_RECT_PADDING_VERTICAL = 5;
+const uint8_t SYNCHRONIZER_QUEUE_SIZE = 2;
 
 /// Index of the left eye
 const uint8_t EYE_LEFT = 0;
 /// Index of the right eye
 const uint8_t EYE_RIGHT = 1;
+
+/// Weights used to convert BGR image into single channel
+const double BGR_TO_MONO_WEIGHTS[] = {1.0, 0.0, 0.0}; // Must add up to 1.0
+
+/// Inflation of the eye region in horizontal direction
+const uint8_t ROI_PADDING_HORZIZONTAL = 3;
+/// Inflation of the eye region in vertical direction
+const uint8_t ROI_PADDING_VERTICAL = 5;
+
+/// Value of `sigmaColor` for bilateral filter that is applied to each eye image before processing
+const double BILATERAL_FILTER_SIGMA_COLOR = 35.0;
+/// Value of `sigmaSpace` for bilateral filter that is applied to each eye image before processing
+const double BILATERAL_FILTER_SIGMA_SPACE = 2.5;
+
+/// Determines whether to use Scharr instead of Sobel for gradient computation
+const bool GRADIENTS_SCHARR_INSTEAD_SOBEL = true;
+/// Determines whether to apply weights based on inverted intensity of a pixel that is considered to be pupil centre; assumption is that iris appears darker than the rest of the image
+const bool APPLY_INTENSITY_WEIGHTS = true;
+/// Determines whether to consider only gradients that have their magnitude at least `MINIMUM_GRADIENT_SIGNIFICANCE` percent of the maximum detected gradient magnitude while computing the objective function
+const bool CONSIDER_ONLY_SIGNIFICANT_GRADIENTS = true;
+/// Factor between 0.0 and 1.0 that determines minimum allowed magnitude of gradients that are included during computation of the objective function, valid only if `CONSIDER_ONLY_SIGNIFICANT_GRADIENTS` is set to true
+const double MINIMUM_GRADIENT_SIGNIFICANCE = 0.25;
+/// Determines the neighbourhood size around detected 2D pupil centre that is considered to estimation of its 3D position
+const uint16_t PUPIL_3D_NEIGHBOURHOOD_SIZE = 5;
+
+/// Delay used in the context of cv::waitKey, applicable only if visualisation is enabled
+const int CV_WAITKEY_DELAY = 10;
 
 /////////////
 /// TYPES ///
@@ -61,9 +84,84 @@ typedef message_filters::sync_policies::ExactTime<sensor_msgs::msg::Image,
 /// HELPER FUNCTIONS ///
 ////////////////////////
 
-inline cv::Rect roi_to_rect(const sensor_msgs::msg::RegionOfInterest &roi, const uint8_t padding_horizontal = 0, const uint8_t padding_vertical = 0)
+namespace sensor_msgs::roi
 {
-  return cv::Rect(roi.x_offset - padding_horizontal, roi.y_offset - padding_vertical, roi.width + 2 * padding_horizontal, roi.height + 2 * padding_vertical);
+/// Convert ROI msg to CV rectangle
+inline cv::Rect_<int16_t> to_rect(const sensor_msgs::msg::RegionOfInterest &roi, const cv::Size_<int16_t> &max_size, const int8_t padding_horizontal = 0, const int8_t padding_vertical = 0)
+{
+  return cv::Rect_<int16_t>((signed)(roi.x_offset - padding_horizontal),
+                            (signed)(roi.y_offset - padding_vertical),
+                            (signed)(roi.width + 2 * padding_horizontal),
+                            (signed)(roi.height + 2 * padding_vertical)) &
+         cv::Rect_<int16_t>(0, 0, max_size.width, max_size.height);
+}
+} // namespace sensor_msgs::roi
+
+namespace cv
+{
+/// Convert CV point to msg
+inline geometry_msgs::msg::Point to_msg(const cv::Point3_<double> &point)
+{
+  geometry_msgs::msg::Point msg;
+  msg.x = point.x;
+  msg.y = point.y;
+  msg.z = point.z;
+  return msg;
+}
+
+/// Show image, normalize and colourize if it contains floating point data
+inline void img_show(const std::string &window, const cv::Mat &img)
+{
+  cv::Mat img_to_show;
+  if (img.type() == CV_32F || img.type() == CV_64F)
+  {
+    double min_val, max_val;
+    cv::minMaxLoc(img, &min_val, &max_val, NULL, NULL);
+    if (min_val != max_val)
+    {
+      img.convertTo(img_to_show, CV_8UC1, 255.0 / (max_val - min_val), -255.0 * min_val / (max_val - min_val));
+      cv::applyColorMap(img_to_show, img_to_show, COLORMAP_JET);
+    }
+  }
+  else
+  {
+    img_to_show = img;
+  }
+  cv::namedWindow(window, cv::WINDOW_KEEPRATIO);
+  cv::imshow(window, img_to_show);
+}
+
+/// Shown image with pupil centre drawn as a dot
+inline void img_show_pupil(const std::string &window, const cv::Mat &img, cv::Point pupil_centre, const uint16_t offset_x = 0, const uint16_t offset_y = 0)
+{
+  cv::Mat_<cv::Vec<uint8_t, 3>> img_to_show;
+  if (img.type() == CV_8UC1)
+  {
+    cv::cvtColor(img, img_to_show, cv::COLOR_GRAY2BGR);
+  }
+  else if (img.type() == CV_8UC3)
+  {
+    img_to_show = img;
+  }
+
+  pupil_centre.x += offset_x;
+  pupil_centre.y += offset_y;
+
+  cv::circle(img_to_show, pupil_centre, 0, cv::Scalar(255, 0, 0));
+  cv::img_show(window, img_to_show);
+}
+} // namespace cv
+
+/// Extract neighbourhood around a point from an image
+inline cv::Mat extract_neighbourhood(const cv::Mat &img, const cv::Point &point, const uint8_t neighbourhood = 3)
+{
+  uint8_t neighbourhood_half = neighbourhood / 2;
+  cv::Rect_<int16_t> roi = cv::Rect_<int16_t>((signed)(point.x - neighbourhood_half),
+                                              (signed)(point.y - neighbourhood_half),
+                                              neighbourhood,
+                                              neighbourhood) &
+                           cv::Rect_<int16_t>(0, 0, img.cols, img.rows);
+  return img(roi);
 }
 
 //////////////////
@@ -97,14 +195,24 @@ private:
                              const sensor_msgs::msg::Image::SharedPtr msg_img_depth,
                              const sensor_msgs::msg::CameraInfo::SharedPtr msg_camera_info,
                              const eye_region_msgs::msg::EyeRegionsOfInterestStamped::SharedPtr msg_eyes);
-  /// Extract 3D position of a pixel from depth map
-  bool depth_px_to_xyz(
-      const cv::Mat &img_depth_rect,
-      cv::Vec3d &output,
-      const std::array<double, 9> &intrinsics,
-      const uint16_t x,
-      const uint16_t y,
-      const float depth_scale = 0.001);
+
+  /// Localisation of the 3D pupil centre
+  cv::Point3_<double> localise_pupil(const cv::Mat_<uint8_t> &img_mono,
+                                     const cv::Mat_<uint16_t> &img_depth,
+                                     const std::array<double, 9> &camera_matrix,
+                                     const cv::Rect_<uint16_t> &eye_roi,
+                                     const uint8_t eye_index = EYE_LEFT);
+
+  /// Computation of the objective function based on gradients
+  cv::Mat_<double> compute_objective_function(const cv::Mat_<uint8_t> &img_eye_mono, const uint8_t eye_index = EYE_LEFT);
+
+  /// Create a 3D cloud point at a specific pixel from depth map
+  bool create_cloud_point(
+      const cv::Mat_<uint16_t> &img_depth,
+      cv::Point3_<double> &output,
+      const std::array<double, 9> &camera_matrix,
+      const cv::Point_<int16_t> &pixel,
+      const double depth_scale = 0.001);
 };
 
 PupilCentre::PupilCentre() : Node(NODE_NAME),
@@ -134,7 +242,11 @@ void PupilCentre::synchronized_callback(const sensor_msgs::msg::Image::SharedPtr
 {
   RCLCPP_DEBUG(this->get_logger(), "Received synchronized messages for processing");
 
-  // Use cv_bridge to convert sensor_msgs::msg::Image to cv::Mat
+  // Create output msg
+  rgbd_gaze_msgs::msg::PupilCentresStamped pupil_centres;
+  pupil_centres.header = msg_img_color->header;
+
+  // Convert color and depth images to CV
   cv_bridge::CvImagePtr img_color, img_depth;
   try
   {
@@ -147,68 +259,275 @@ void PupilCentre::synchronized_callback(const sensor_msgs::msg::Image::SharedPtr
     return;
   }
 
-  rgbd_gaze_msgs::msg::PupilCentresStamped pupil_centres;
-  pupil_centres.header = msg_img_color->header;
-
-  cv::Mat img_color_eyes[2];
-  for (uint8_t eye = 0; eye < 2; eye++)
+  // Convert color to mono
+  cv::Mat_<uint8_t> img_mono;
+  if (BGR_TO_MONO_WEIGHTS[2] == 1.0)
   {
-    // Convert eye ROIs to rectangles
-    cv::Rect roi_eyes = roi_to_rect(msg_eyes->eyes.rois[eye], ROI_TO_RECT_PADDING_HORZIZONTAL, ROI_TO_RECT_PADDING_VERTICAL);
+    // Pure red
+    cv::extractChannel(img_color->image, img_mono, 2);
+  }
+  else if (BGR_TO_MONO_WEIGHTS[1] == 1.0)
+  {
+    // Pure green
+    cv::extractChannel(img_color->image, img_mono, 1);
+  }
+  else if (BGR_TO_MONO_WEIGHTS[0] == 1.0)
+  {
+    // Pure blue
+    cv::extractChannel(img_color->image, img_mono, 0);
+  }
+  else
+  {
+    // Combination of channels
+    cv::transform(img_color->image, img_mono, cv::Vec<double, 3>(BGR_TO_MONO_WEIGHTS[0], BGR_TO_MONO_WEIGHTS[1], BGR_TO_MONO_WEIGHTS[2]));
+  }
 
-    // Get the eye region images as cv::Mat, while being bounded to the ROI
-    img_color_eyes[eye] = img_color->image(roi_eyes);
+  // Process both eyes
+  for (uint8_t eye_index = 0; eye_index < 2; eye_index++)
+  {
+    // Convert eye ROI to CV
+    cv::Rect eye_roi = sensor_msgs::roi::to_rect(msg_eyes->eyes.rois[eye_index], img_mono.size(), ROI_PADDING_HORZIZONTAL, ROI_PADDING_VERTICAL);
 
-    // TODO: Implement pupil centre estimation
+    // Determine 3D location of the pupil
+    cv::Point3_<double> pupil_centre = localise_pupil(img_mono, img_depth->image, msg_camera_info->k, eye_roi, eye_index);
 
-    cv::Point2d pupil_centre; // <--- output
+    // Convert to msg
+    pupil_centres.pupils.centres[eye_index] = cv::to_msg(pupil_centre);
+  }
 
-    cv::Vec3d pupil;
-    auto ret = depth_px_to_xyz(img_depth->image, pupil, msg_camera_info->k, msg_eyes->eyes.rois[eye].x_offset + pupil_centre.x, msg_eyes->eyes.rois[eye].y_offset + pupil_centre.y);
+  // Wait to render images, if visualisation is enabled
+  if (this->get_parameter("visualise").get_value<bool>())
+  {
+    cv::waitKey(CV_WAITKEY_DELAY);
+  }
 
-    // Place pupil centre into the message
-    pupil_centres.pupils.centres[eye].x = pupil[0];
-    pupil_centres.pupils.centres[eye].y = pupil[1];
-    pupil_centres.pupils.centres[eye].z = pupil[2];
+  // Publish the pupil centres
+  pub_pupil_centres_->publish(pupil_centres);
+}
 
-    // Publish the pupil centres
-    pub_pupil_centres_->publish(pupil_centres);
+cv::Point3_<double> PupilCentre::localise_pupil(const cv::Mat_<uint8_t> &img_mono,
+                                                const cv::Mat_<uint16_t> &img_depth,
+                                                const std::array<double, 9> &camera_matrix,
+                                                const cv::Rect_<uint16_t> &eye_roi,
+                                                const uint8_t eye_index)
+{
+  // Get the eye image
+  cv::Mat_<uint8_t> img_eye_mono = img_mono(eye_roi);
 
-    // Visualise if desired
-    if (this->get_parameter("visualise").get_value<bool>())
+  // Compute objective function
+  cv::Mat_<double> objective_function = compute_objective_function(img_eye_mono, eye_index);
+
+  // Find pupil centre as maximum argument of the objective function
+  cv::Point pupil_centre;
+  cv::minMaxLoc(objective_function, NULL, NULL, NULL, &pupil_centre);
+
+  // Extract a small neighbourhood around the detected pupil and normalize it to serve as weights
+  cv::Mat_<double> objective_function_pupil_neighbourhood = extract_neighbourhood(objective_function, pupil_centre, PUPIL_3D_NEIGHBOURHOOD_SIZE);
+  objective_function_pupil_neighbourhood /= cv::sum(objective_function_pupil_neighbourhood)[0];
+
+  // Create output
+  cv::Point3_<double> pupil_centre_3d = cv::Vec<double, 3>(0.0, 0.0, 0.0);
+  // Keep track of successfuly converted depth points to 3D position, i.e. valid depth pixels
+  // Keep track of residual weights that failed to be applied
+  double residuals = 0.0;
+  // Iterate over the neighbourhood and compute 3D position for each pixel
+  for (uint16_t r = 0; r < objective_function_pupil_neighbourhood.rows; ++r)
+  {
+    const double *objective_function_pupil_neighbourhood_row_ptr = objective_function_pupil_neighbourhood.ptr<double>(r);
+
+    for (uint16_t c = 0; c < objective_function_pupil_neighbourhood.cols; ++c)
     {
-      std::string eye_side;
-      if (eye == EYE_LEFT)
+      cv::Point3_<double> sample;
+      cv::Point_<int16_t> pixel = cv::Point_<int16_t>(ROI_PADDING_HORZIZONTAL + eye_roi.x + pupil_centre.x - PUPIL_3D_NEIGHBOURHOOD_SIZE / 2,
+                                                      ROI_PADDING_VERTICAL + eye_roi.y + pupil_centre.y - PUPIL_3D_NEIGHBOURHOOD_SIZE / 2);
+      if (create_cloud_point(img_depth, sample, camera_matrix, pixel))
       {
-        eye_side = "L";
+        pupil_centre_3d += objective_function_pupil_neighbourhood_row_ptr[c] * sample;
       }
       else
       {
-        eye_side = "R";
+        residuals += objective_function_pupil_neighbourhood_row_ptr[c];
       }
-      cv::namedWindow(eye_side + "_ROI", cv::WINDOW_KEEPRATIO);
-      cv::imshow(eye_side + "_ROI", img_color_eyes[EYE_LEFT]);
-
-      cv::waitKey(10);
     }
   }
+  if (pupil_centre_3d.x == 0.0 && pupil_centre_3d.y == 0.0 && pupil_centre_3d.z == 0.0)
+  {
+    RCLCPP_ERROR(this->get_logger(), "Cannot obtain any depth information for the detected pupil centre");
+    pupil_centre_3d = cv::Vec<double, 3>(0.0, 0.0, 0.0);
+  }
+  else
+  {
+    // Normalize with residuals, if some pixels were invalid
+    pupil_centre_3d *= 1.0 / (1.0 - residuals);
+  }
+
+  // Visualise if enabled
+  if (this->get_parameter("visualise").get_value<bool>())
+  {
+    std::string eye_side;
+    if (eye_index == EYE_LEFT)
+    {
+      eye_side = "L_";
+    }
+    else
+    {
+      eye_side = "R_";
+    }
+
+    cv::img_show_pupil(eye_side + "pupil_centre", img_eye_mono, pupil_centre);
+  }
+
+  return pupil_centre_3d;
 }
 
-bool PupilCentre::depth_px_to_xyz(
-    const cv::Mat &img_depth_rect,
-    cv::Vec3d &output,
-    const std::array<double, 9> &intrinsics,
-    const uint16_t x,
-    const uint16_t y,
-    const float depth_scale)
+cv::Mat_<double> PupilCentre::compute_objective_function(const cv::Mat_<uint8_t> &img_eye_mono,
+                                                         const uint8_t eye_index)
 {
-  if (x >= img_depth_rect.cols || y >= img_depth_rect.rows)
+  // Create output image
+  cv::Mat_<double> objective_function = cv::Mat_<double>::zeros(img_eye_mono.size());
+
+  // Equalize
+  cv::Mat img_eye_equalized;
+  cv::equalizeHist(img_eye_mono, img_eye_equalized);
+
+  // Filter
+  cv::Mat1b img_eye_filtered;
+  cv::bilateralFilter(img_eye_equalized, img_eye_filtered, -1, BILATERAL_FILTER_SIGMA_COLOR, BILATERAL_FILTER_SIGMA_SPACE);
+
+  // Compute gradients
+  cv::Mat_<double> gradients_x, gradients_y;
+  if (GRADIENTS_SCHARR_INSTEAD_SOBEL)
   {
-    std::cerr << "depth_px_to_xyz() - Pixel out of bounds\n";
+    cv::Scharr(img_eye_filtered, gradients_x, CV_64F, 1, 0, 1.0, 0.0);
+    cv::Scharr(img_eye_filtered, gradients_y, CV_64F, 0, 1, 1.0, 0.0);
+  }
+  else
+  {
+    cv::Sobel(img_eye_filtered, gradients_x, CV_64F, 1, 0, 1.0, 0.0);
+    cv::Sobel(img_eye_filtered, gradients_y, CV_64F, 0, 1, 1.0, 0.0);
+  }
+
+  // Compute gradient magnitudes
+  cv::Mat_<double> gradient_magnitudes;
+  cv::magnitude(gradients_x, gradients_y, gradient_magnitudes);
+
+  // Determine minimum magnitude that pixel gradients must have in order to be considered in computations, if enabled
+  double min_allowed_magnitude;
+  if (CONSIDER_ONLY_SIGNIFICANT_GRADIENTS)
+  {
+    double max_gradient_magnitude;
+    cv::minMaxLoc(gradient_magnitudes, NULL, &max_gradient_magnitude, NULL, NULL);
+    min_allowed_magnitude = MINIMUM_GRADIENT_SIGNIFICANCE * max_gradient_magnitude;
+  }
+
+// Parallelize computations, if OpenMP is available
+#pragma omp parallel for
+  // Compute objective for all possible centres
+  for (uint16_t r = 0; r < img_eye_mono.rows; ++r)
+  {
+    const uint8_t *img_eye_mono_row_ptr = img_eye_mono.ptr<uint8_t>(r);
+    double *objective_function_row_ptr = objective_function.ptr<double>(r);
+
+    for (uint16_t c = 0; c < img_eye_mono.cols; ++c)
+    {
+      const cv::Vec<int16_t, 2> possible_centre = cv::Vec<int16_t, 2>(c, r);
+
+      // For each possible centre, consider gradients of all other pixels
+      for (uint16_t g_r = 0; g_r < img_eye_mono.rows; ++g_r)
+      {
+        const double *gradient_magnitudes_row_ptr = gradient_magnitudes.ptr<double>(g_r);
+        const double *gradients_x_row_ptr = gradients_x.ptr<double>(g_r);
+        const double *gradients_y_row_ptr = gradients_y.ptr<double>(g_r);
+
+        for (uint16_t g_c = 0; g_c < img_eye_mono.cols; ++g_c)
+        {
+          const cv::Vec<int16_t, 2> gradient_pixel = cv::Vec<int16_t, 2>(g_c, g_r);
+
+          // Skip the same pixel
+          if (possible_centre == gradient_pixel)
+          {
+            continue;
+          }
+
+          // Make sure the gradient has satisfactory magnitude, if enabled
+          if (CONSIDER_ONLY_SIGNIFICANT_GRADIENTS)
+          {
+            if (gradient_magnitudes_row_ptr[g_c] < min_allowed_magnitude)
+            {
+              continue;
+            }
+          }
+
+          // Get normalized gradient vector
+          cv::Vec<double, 2> gradient = cv::Vec<double, 2>(gradients_x_row_ptr[g_c] / gradient_magnitudes_row_ptr[g_c], gradients_y_row_ptr[g_c] / gradient_magnitudes_row_ptr[g_c]);
+
+          // Compute and normalize displacement vector from the possible centre to the compared gradient pixel
+          cv::Vec<double, 2> displacement = gradient_pixel - possible_centre;
+          displacement = cv::normalize(displacement);
+
+          // Compute objective with respect to the gradient as dot product between displacement vector and gradient vector of the pixel
+          double objective_wrt_gradient = displacement.dot(gradient);
+          // Allow only positive values
+          objective_wrt_gradient = std::max<double>(objective_wrt_gradient, 0.0);
+          // Square the objective
+          objective_wrt_gradient *= objective_wrt_gradient;
+
+          // Sum objective with respect to all gradients
+          objective_function_row_ptr[c] += objective_wrt_gradient;
+        }
+      }
+
+      // Apply weight according to the inverted intensity of pixel considered to be pupil centre, if enabled
+      if (APPLY_INTENSITY_WEIGHTS)
+      {
+        objective_function_row_ptr[c] *= std::sqrt(255 - img_eye_mono_row_ptr[c]);
+      }
+    }
+  }
+
+  // if (POSTPROCESS_OBJECTIVE_FUNCTION)
+  // {
+  // Unimplemented
+  // TODO: Implement postprocessing of the objective function
+  // }
+
+  // Visualise if enabled
+  if (this->get_parameter("visualise").get_value<bool>())
+  {
+    std::string eye_side;
+    if (eye_index == EYE_LEFT)
+    {
+      eye_side = "L_";
+    }
+    else
+    {
+      eye_side = "R_";
+    }
+
+    // cv::img_show(eye_side + "img_eye_mono", img_eye_mono);
+    cv::img_show(eye_side + "img_eye_equalized", img_eye_equalized);
+    cv::img_show(eye_side + "img_eye_filtered", img_eye_filtered);
+    // cv::img_show(eye_side + "gradient_magnitudes", gradient_magnitudes);
+    cv::img_show(eye_side + "objective_function", objective_function);
+  }
+
+  return objective_function;
+}
+
+bool PupilCentre::create_cloud_point(
+    const cv::Mat_<uint16_t> &img_depth,
+    cv::Point3_<double> &output,
+    const std::array<double, 9> &camera_matrix,
+    const cv::Point_<int16_t> &pixel,
+    const double depth_scale)
+{
+  if (pixel.x >= img_depth.cols || pixel.y >= img_depth.rows)
+  {
+    RCLCPP_INFO(this->get_logger(), "create_cloud_point() - Pixel out of bounds");
     return false;
   }
 
-  uint16_t z = img_depth_rect.at<uint16_t>(x, y);
+  uint16_t z = img_depth.at<uint16_t>(pixel);
 
   if (z == 0)
   {
@@ -216,9 +535,9 @@ bool PupilCentre::depth_px_to_xyz(
   }
   else
   {
-    output[2] = z * depth_scale;
-    output[0] = output[2] * ((x - intrinsics[2]) / intrinsics[0]);
-    output[1] = output[2] * ((y - intrinsics[5]) / intrinsics[4]);
+    output.z = z * depth_scale;
+    output.x = output.z * ((pixel.x - camera_matrix[2]) / camera_matrix[0]);
+    output.y = output.z * ((pixel.y - camera_matrix[5]) / camera_matrix[4]);
     return true;
   }
 }

@@ -64,7 +64,7 @@ const bool CONSIDER_ONLY_SIGNIFICANT_GRADIENTS = true;
 /// Factor between 0.0 and 1.0 that determines minimum allowed magnitude of gradients that are included during computation of the objective function, valid only if `CONSIDER_ONLY_SIGNIFICANT_GRADIENTS` is set to true
 const double MINIMUM_GRADIENT_SIGNIFICANCE = 0.25;
 /// Determines the neighbourhood size around detected 2D pupil centre that is considered to estimation of its 3D position
-const uint8_t PUPIL_3D_NEIGHBOURHOOD_SIZE = 5;
+const uint8_t PUPIL_3D_NEIGHBOURHOOD_SIZE = 3;
 
 /// Delay used in the context of cv::waitKey, applicable only if visualisation is enabled
 const int CV_WAITKEY_DELAY = 10;
@@ -337,8 +337,8 @@ cv::Point3_<double> PupilCentre::localise_pupil(const cv::Mat_<uint8_t> &img_mon
     for (uint16_t c = 0; c < objective_function_pupil_neighbourhood.cols; ++c)
     {
       cv::Point3_<double> sample;
-      cv::Point_<int16_t> pixel = cv::Point_<int16_t>(ROI_PADDING_HORZIZONTAL + eye_roi.x + pupil_centre.x - PUPIL_3D_NEIGHBOURHOOD_SIZE / 2 + c,
-                                                      ROI_PADDING_VERTICAL + eye_roi.y + pupil_centre.y - PUPIL_3D_NEIGHBOURHOOD_SIZE / 2 + r);
+      cv::Point_<int16_t> pixel = cv::Point_<int16_t>(eye_roi.x + pupil_centre.x - PUPIL_3D_NEIGHBOURHOOD_SIZE / 2 + c,
+                                                      eye_roi.y + pupil_centre.y - PUPIL_3D_NEIGHBOURHOOD_SIZE / 2 + r);
       if (create_cloud_point(img_depth, sample, camera_matrix, pixel))
       {
         pupil_centre_3d += objective_function_pupil_neighbourhood_row_ptr[c] * sample;
@@ -504,10 +504,10 @@ cv::Mat_<double> PupilCentre::compute_objective_function(const cv::Mat_<uint8_t>
     }
 
     // cv::img_show(eye_side + "img_eye_mono", img_eye_mono);
-    cv::img_show(eye_side + "img_eye_equalized", img_eye_equalized);
-    cv::img_show(eye_side + "img_eye_filtered", img_eye_filtered);
+    // cv::img_show(eye_side + "img_eye_equalized", img_eye_equalized);
+    // cv::img_show(eye_side + "img_eye_filtered", img_eye_filtered);
     // cv::img_show(eye_side + "gradient_magnitudes", gradient_magnitudes);
-    cv::img_show(eye_side + "objective_function", objective_function);
+    // cv::img_show(eye_side + "objective_function", objective_function);
   }
 
   return objective_function;

@@ -41,8 +41,8 @@ const uint8_t EYE_LEFT = 0;
 /// Index of the right eye
 const uint8_t EYE_RIGHT = 1;
 
-const float VISUAL_PUPIL_CENTRE_SCALE = 0.0075;
-const float VISUAL_PUPIL_CENTRE_COLOR[] = {0, 0, 0.25, 1};
+const float VISUAL_PUPIL_CENTRE_SCALE = 0.0025;
+const float VISUAL_PUPIL_CENTRE_COLOR[] = {0.25, 0.25, 1.0, 1};
 
 const float VISUAL_EYEBALL_CENTRE_SCALE = 0.01;
 const float VISUAL_EYEBALL_CENTRE_COLOR[] = {0, 0, 0.5, 1};
@@ -118,7 +118,7 @@ Eigen::ParametrizedLine<double, 3> Eye3dModel::determine_visual_axis(const Eigen
   Eigen::Vector3d visual_axis_unit_vect = kappa * optical_axis.direction();
 
   // Represent visual axis as a parametrized line (wrt. head)
-  Eigen::ParametrizedLine<double, 3> visual_axis(optical_axis.pointAt(distance_eyeball_cornea_), visual_axis_unit_vect);
+  return Eigen::ParametrizedLine<double, 3>(optical_axis.pointAt(distance_eyeball_cornea_), visual_axis_unit_vect);
 }
 
 //////////////////
@@ -144,7 +144,7 @@ private:
   /// Eye model parameters based on specific user calibration
   Eye3dModel eye_models_[2];
 
-  /// Publisher of the pupil centres
+  /// Publisher of visualisation markers
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
 
   /// Broadcaster of the TF frames
@@ -164,32 +164,30 @@ RgbdGaze::RgbdGaze() : Node(NODE_NAME),
   // Synchronize the subscriptions under a single callback
   synchronizer_.registerCallback(&RgbdGaze::synchronized_callback, this);
 
-  // Parameters of the element
-  this->declare_parameter<bool>("visualise", true);
-  this->declare_parameter<bool>("broadcast_tf", false);
-  this->declare_parameter<bool>("publish_markers", true);
-
-  // Register publisher of the pupil centres
+  // Register publisher of visualisation markers
   rclcpp::QoS qos = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
   pub_markers_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("rgbd_gaze_markers", qos);
+
+  // Parameters of the element
+  this->declare_parameter<bool>("broadcast_tf", false);
+  this->declare_parameter<bool>("publish_markers", true);
 
   // User specific parameters obtained via calibration
   this->declare_parameter<std::string>("user.id", "");
   // Left eye
-  eye_models_[EYE_LEFT].eyeball_centre_[0] = this->declare_parameter<double>("user.eyes.left.eyeball_centre_.x", 0.0);
-  eye_models_[EYE_LEFT].eyeball_centre_[1] = this->declare_parameter<double>("user.eyes.left.eyeball_centre_.y", 0.0);
-  eye_models_[EYE_LEFT].eyeball_centre_[2] = this->declare_parameter<double>("user.eyes.left.eyeball_centre_.z", 0.0);
+  eye_models_[EYE_LEFT].eyeball_centre_[0] = this->declare_parameter<double>("user.eyes.left.eyeball_centre.x", 0.0);
+  eye_models_[EYE_LEFT].eyeball_centre_[1] = this->declare_parameter<double>("user.eyes.left.eyeball_centre.y", 0.0);
+  eye_models_[EYE_LEFT].eyeball_centre_[2] = this->declare_parameter<double>("user.eyes.left.eyeball_centre.z", 0.0);
   eye_models_[EYE_LEFT].alpha_ = this->declare_parameter<double>("user.eyes.left.kappa.alpha", 0.0);
   eye_models_[EYE_LEFT].beta_ = this->declare_parameter<double>("user.eyes.left.kappa.beta", 0.0);
   eye_models_[EYE_LEFT].distance_eyeball_cornea_ = this->declare_parameter<double>("user.eyes.left.distance_eyeball_cornea", 0.0);
   // Right eye
-  eye_models_[EYE_RIGHT].eyeball_centre_[0] = this->declare_parameter<double>("user.eyes.right.eyeball_centre_.x", 0.0);
-  eye_models_[EYE_RIGHT].eyeball_centre_[1] = this->declare_parameter<double>("user.eyes.right.eyeball_centre_.y", 0.0);
-  eye_models_[EYE_RIGHT].eyeball_centre_[2] = this->declare_parameter<double>("user.eyes.right.eyeball_centre_.z", 0.0);
+  eye_models_[EYE_RIGHT].eyeball_centre_[0] = this->declare_parameter<double>("user.eyes.right.eyeball_centre.x", 0.0);
+  eye_models_[EYE_RIGHT].eyeball_centre_[1] = this->declare_parameter<double>("user.eyes.right.eyeball_centre.y", 0.0);
+  eye_models_[EYE_RIGHT].eyeball_centre_[2] = this->declare_parameter<double>("user.eyes.right.eyeball_centre.z", 0.0);
   eye_models_[EYE_RIGHT].alpha_ = this->declare_parameter<double>("user.eyes.right.kappa.alpha", 0.0);
   eye_models_[EYE_RIGHT].beta_ = this->declare_parameter<double>("user.eyes.right.kappa.beta", 0.0);
   eye_models_[EYE_RIGHT].distance_eyeball_cornea_ = this->declare_parameter<double>("user.eyes.right.distance_eyeball_cornea", 0.0);
-
   RCLCPP_INFO(this->get_logger(), "Loaded parameters for user %s", this->get_parameter("user.id").get_value<std::string>().c_str());
 
   RCLCPP_INFO(this->get_logger(), "Node initialised");
@@ -198,20 +196,19 @@ RgbdGaze::RgbdGaze() : Node(NODE_NAME),
 void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg_head_pose,
                                      const rgbd_gaze_msgs::msg::PupilCentresStamped::SharedPtr msg_pupil_centres)
 {
-  RCLCPP_INFO(this->get_logger(), "Received synchronized messages for processing");
+  RCLCPP_DEBUG(this->get_logger(), "Received synchronized messages for processing");
 
   // Convert head pose ROS2 to Eigen (wrt. camera)
   Eigen::Isometry3d head_pose;
   tf2::fromMsg(msg_head_pose->pose, head_pose);
 
-  // Convert pupil centre ROS2 to Eigen (wrt. camera)
   Eigen::Vector3d pupil_centres[2];
-  tf2::fromMsg(msg_pupil_centres->pupils.centres[0], pupil_centres[EYE_LEFT]);
-  tf2::fromMsg(msg_pupil_centres->pupils.centres[1], pupil_centres[EYE_RIGHT]);
-
   Eigen::ParametrizedLine<double, 3> optical_axis[2], visual_axis[2];
   for (uint8_t eye = 0; eye < 2; eye++)
   {
+    // Convert pupil centre ROS2 to Eigen (wrt. camera)
+    tf2::fromMsg(msg_pupil_centres->pupils.centres[eye], pupil_centres[eye]);
+
     // Get optical and visual axis (wrt. head pose)
     optical_axis[eye] = eye_models_[eye].determine_optical_axis(head_pose, pupil_centres[eye]);
     visual_axis[eye] = eye_models_[eye].determine_visual_axis(optical_axis[eye]);

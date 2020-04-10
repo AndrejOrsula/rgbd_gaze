@@ -1,23 +1,25 @@
 rgbd_gaze:
   ros__parameters:
     user:
-      id: 'default'
+      id: "default"
       eyes:
         left:
           distance_eyeball_cornea: 0.001
-          eyeball_centre_:
-            x: -0.05
-            y: 0.0
-            z: 0.0
+          eyeball_centre:
+            x: -0.031864
+            y: -0.007015
+            z: -0.006047
+
           kappa:
             alpha: -0.025
             beta: 0.085
         right:
           distance_eyeball_cornea: 0.001
-          eyeball_centre_:
-            x: 0.05
-            y: 0.0
-            z: 0.0
+          eyeball_centre:
+            x: 0.033138
+            y: -0.002532
+            z: -0.003361
+
           kappa:
             alpha: -0.025
             beta: -0.085

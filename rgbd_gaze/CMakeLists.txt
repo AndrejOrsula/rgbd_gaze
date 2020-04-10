@@ -28,19 +28,26 @@ find_package(rclcpp REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(pcl_conversions REQUIRED)
 # ROS2 interfaces
 find_package(geometry_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(eyelid_contour_msgs REQUIRED)
 find_package(rgbd_gaze_msgs REQUIRED)
 
 # Eigen
 find_package(Eigen3 REQUIRED)
 
+# PCL
+find_package(PCL REQUIRED)
+
 # Include directories
-include_directories(include ${EIGEN3_INCLUDE_DIRS})
+include_directories(include ${EIGEN3_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS})
 
 # Executables
 set(EXECUTABLE_0 rgbd_gaze)
+set(EXECUTABLE_1 calibration)
 
 # Executable 0
 add_executable(${EXECUTABLE_0} src/${EXECUTABLE_0}.cpp)
@@ -55,8 +62,22 @@ ament_target_dependencies(
   visualization_msgs
   rgbd_gaze_msgs)
 
+# Executable 1
+add_executable(${EXECUTABLE_1} src/${EXECUTABLE_1}.cpp)
+target_link_libraries(${EXECUTABLE_1} ${PCL_LIBRARIES})
+ament_target_dependencies(
+  ${EXECUTABLE_1}
+  rclcpp
+  message_filters
+  tf2
+  pcl_conversions
+  geometry_msgs
+  sensor_msgs
+  visualization_msgs
+  eyelid_contour_msgs)
+
 # Install targets
-install(TARGETS ${EXECUTABLE_0} DESTINATION lib/${PROJECT_NAME})
+install(TARGETS ${EXECUTABLE_0} ${EXECUTABLE_1} DESTINATION lib/${PROJECT_NAME})
 # Install directories
 install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
 

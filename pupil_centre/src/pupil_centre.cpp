@@ -63,6 +63,10 @@ const bool APPLY_INTENSITY_WEIGHTS = true;
 const bool CONSIDER_ONLY_SIGNIFICANT_GRADIENTS = true;
 /// Factor between 0.0 and 1.0 that determines minimum allowed magnitude of gradients that are included during computation of the objective function, valid only if `CONSIDER_ONLY_SIGNIFICANT_GRADIENTS` is set to true
 const double MINIMUM_GRADIENT_SIGNIFICANCE = 0.25;
+/// Determines whether to enable postprocessing of the objective funtion that can resolve problems with local minima close to image borders.
+const bool POSTPROCESS_OBJECTIVE_FUNCTION = true;
+/// Treshold used during postprocessing that determines size of blobs that are removed, if connected to image boundary.
+const uint8_t POSTPROCESS_THRESHOLD = 230;
 /// Determines the neighbourhood size around detected 2D pupil centre that is considered to estimation of its 3D position
 const uint8_t PUPIL_3D_NEIGHBOURHOOD_SIZE = 3;
 
@@ -107,6 +111,16 @@ inline geometry_msgs::msg::Point to_msg(const cv::Point3_<double> &point)
   msg.y = point.y;
   msg.z = point.z;
   return msg;
+}
+
+/// Determines whether contour is touching border of the image.
+inline bool is_contour_touching_border(const std::vector<cv::Point> &contour, const cv::Size &image_size)
+{
+  cv::Rect contour_bounding_rectangle = cv::boundingRect(contour);
+  return contour_bounding_rectangle.x <= 0 ||
+         contour_bounding_rectangle.y <= 0 ||
+         contour_bounding_rectangle.br().x >= image_size.width ||
+         contour_bounding_rectangle.br().y >= image_size.height;
 }
 
 /// Show image, normalize and colourize if it contains floating point data
@@ -484,11 +498,60 @@ cv::Mat_<double> PupilCentre::compute_objective_function(const cv::Mat_<uint8_t>
     }
   }
 
-  // if (POSTPROCESS_OBJECTIVE_FUNCTION)
-  // {
-  // Unimplemented
-  // TODO: Implement postprocessing of the objective function
-  // }
+  // Remove local maxima of the objective function that are connected to image boundaries, if enabled
+  if (POSTPROCESS_OBJECTIVE_FUNCTION)
+  {
+    // Convert the objective function to normalized 8-bit image
+    cv::Mat_<uint8_t> objective_function_8bit;
+    double min_val, max_val;
+    cv::minMaxLoc(objective_function, &min_val, &max_val, NULL, NULL);
+    if (min_val != max_val)
+    {
+      objective_function.convertTo(objective_function_8bit, CV_8UC1, 255.0 / (max_val - min_val), -255.0 * min_val / (max_val - min_val));
+    }
+
+    // Apply a threshold and detect contours
+    cv::Mat_<uint8_t> objective_function_binary;
+    cv::threshold(objective_function_8bit, objective_function_binary, POSTPROCESS_THRESHOLD, 255, CV_THRESH_BINARY);
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(objective_function_binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
+
+    // Image that contains mask of the boundary regions that need to be removed
+    cv::Mat_<uint8_t> boundary_contours = cv::Mat::zeros(objective_function.size(), CV_8UC1);
+    // Flag that makes sure at least one viabla countour is present in the image
+    bool found_viable_contour = false;
+    if (contours.size() > 1)
+    {
+      for (size_t i = 0; i < contours.size(); i++)
+      {
+        if (cv::is_contour_touching_border(contours[i], objective_function.size()))
+        {
+          cv::drawContours(boundary_contours, contours, i, cv::Scalar(255), cv::FILLED);
+        }
+        else
+        {
+          found_viable_contour = true;
+        }
+      }
+
+      // Remove all boundary contours from the objective function, if at least one viable contour was found
+      if (found_viable_contour)
+      {
+        for (uint16_t r = 0; r < objective_function.rows; ++r)
+        {
+          const uint8_t *boundary_contours_row_ptr = boundary_contours.ptr<uint8_t>(r);
+          double *objective_function_row_ptr = objective_function.ptr<double>(r);
+          for (uint16_t c = 0; c < objective_function.cols; ++c)
+          {
+            if (boundary_contours_row_ptr[c])
+            {
+              objective_function_row_ptr[c] = 0.0;
+            }
+          }
+        }
+      }
+    }
+  }
 
   // Visualise if enabled
   if (this->get_parameter("visualise").get_value<bool>())
@@ -507,7 +570,7 @@ cv::Mat_<double> PupilCentre::compute_objective_function(const cv::Mat_<uint8_t>
     // cv::img_show(eye_side + "img_eye_equalized", img_eye_equalized);
     // cv::img_show(eye_side + "img_eye_filtered", img_eye_filtered);
     // cv::img_show(eye_side + "gradient_magnitudes", gradient_magnitudes);
-    // cv::img_show(eye_side + "objective_function", objective_function);
+    cv::img_show(eye_side + "objective_function", objective_function);
   }
 
   return objective_function;

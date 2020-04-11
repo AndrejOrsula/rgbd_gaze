@@ -240,11 +240,11 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
     std::string eye_side;
     if (eye == EYE_LEFT)
     {
-      eye_side = "Left";
+      eye_side = "left";
     }
     else
     {
-      eye_side = "Right";
+      eye_side = "right";
     }
     RCLCPP_INFO(this->get_logger(),
                 "\n" + eye_side + ":\n\teyeball_centre:\n\t\tx: %f\n\t\ty: %f\n\t\tz: %f\n\teyeball_radius: %f",

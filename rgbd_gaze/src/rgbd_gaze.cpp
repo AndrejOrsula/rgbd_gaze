@@ -41,21 +41,20 @@ const uint8_t EYE_LEFT = 0;
 /// Index of the right eye
 const uint8_t EYE_RIGHT = 1;
 
-const float VISUAL_PUPIL_CENTRE_SCALE = 0.0025;
-const float VISUAL_PUPIL_CENTRE_COLOR[] = {0.25, 0.25, 1.0, 1};
-
-const float VISUAL_EYEBALL_CENTRE_SCALE = 0.01;
 const float VISUAL_EYEBALL_CENTRE_COLOR[] = {0, 0, 0.5, 1};
 
-const float VISUAL_CORNEA_CENTRE_SCALE = 0.005;
+const float VISUAL_PUPIL_CENTRE_SCALE = 0.005;
+const float VISUAL_PUPIL_CENTRE_COLOR[] = {0.25, 0.25, 1.0, 1};
+
+const float VISUAL_CORNEA_CENTRE_SCALE = 0.0025;
 const float VISUAL_CORNEA_CENTRE_COLOR[] = {0, 0, 0.75, 1};
 
-const float VISUAL_OPTICAL_AXIS_LENGTH = 2.0;
-const float VISUAL_OPTICAL_AXIS_WIDTH = 0.0025;
+const float VISUAL_OPTICAL_AXIS_LENGTH = 5.0;
+const float VISUAL_OPTICAL_AXIS_WIDTH = 0.001;
 const float VISUAL_OPTICAL_AXIS_COLOR[] = {1.0, 0, 0, 1};
 
-const float VISUAL_VISUAL_AXIS_LENGTH = 2.0;
-const float VISUAL_VISUAL_AXIS_WIDTH = 0.0025;
+const float VISUAL_VISUAL_AXIS_LENGTH = 5.0;
+const float VISUAL_VISUAL_AXIS_WIDTH = 0.001;
 const float VISUAL_VISUAL_AXIS_COLOR[] = {0, 1.0, 0, 1};
 
 /////////////
@@ -74,7 +73,7 @@ typedef message_filters::sync_policies::ExactTime<geometry_msgs::msg::PoseStampe
 void transform_to_camera_frame(Eigen::ParametrizedLine<double, 3> &parametrized_line, const Eigen::Isometry3d &head_pose)
 {
   parametrized_line.origin() = head_pose * parametrized_line.origin();
-  parametrized_line.direction() = (head_pose * parametrized_line.direction()).normalized();
+  parametrized_line.direction() = head_pose.rotation() * parametrized_line.direction();
 }
 
 ////////////////////
@@ -85,13 +84,15 @@ class Eye3dModel
 {
 public:
   /// Position of the eyeball centre wrt. head
-  Eigen::Vector3d eyeball_centre_;
+  Eigen::Vector3d eyeball_centre;
+  /// Radius of the eyeball
+  double eyeball_radius;
   /// Horizontal angular deviation between optical and visual axis, rotated around centre of corneal curvature - in radians
-  double alpha_;
+  double alpha;
   /// Vertical angular deviation between optical and visual axis, rotated around centre of corneal curvature - in radians
-  double beta_;
+  double beta;
   /// Distance between eyebal centre and the entre of the corneal curvature
-  double distance_eyeball_cornea_;
+  double distance_eyeball_cornea;
 
   Eigen::ParametrizedLine<double, 3> determine_optical_axis(const Eigen::Isometry3d &head_pose, const Eigen::Vector3d &pupil_centre);
   Eigen::ParametrizedLine<double, 3> determine_visual_axis(const Eigen::ParametrizedLine<double, 3> &optical_axis);
@@ -103,22 +104,22 @@ Eigen::ParametrizedLine<double, 3> Eye3dModel::determine_optical_axis(const Eige
   Eigen::Vector3d pupil_centre_wrt_head = head_pose.inverse() * pupil_centre;
 
   // Determine optical axis unit vector (wrt. head)
-  Eigen::Vector3d optical_axis_unit_vect = (pupil_centre_wrt_head - eyeball_centre_).normalized();
+  Eigen::Vector3d optical_axis_unit_vect = (pupil_centre_wrt_head - eyeball_centre).normalized();
 
   // Represent optical axis as parametrized line (wrt. head)
-  return Eigen::ParametrizedLine<double, 3>(eyeball_centre_, optical_axis_unit_vect);
+  return Eigen::ParametrizedLine<double, 3>(eyeball_centre, optical_axis_unit_vect);
 }
 
 Eigen::ParametrizedLine<double, 3> Eye3dModel::determine_visual_axis(const Eigen::ParametrizedLine<double, 3> &optical_axis)
 {
   // Determine visual axis unit vector by the use of kappa (wrt. head)
-  Eigen::Quaternion kappa = Eigen::AngleAxisd(beta_, Eigen::Vector3d::UnitY()) * Eigen::AngleAxisd(alpha_, Eigen::Vector3d::UnitX());
+  Eigen::Quaternion kappa = Eigen::AngleAxisd(beta, Eigen::Vector3d::UnitY()) * Eigen::AngleAxisd(alpha, Eigen::Vector3d::UnitX());
 
   // Rotate
   Eigen::Vector3d visual_axis_unit_vect = kappa * optical_axis.direction();
 
   // Represent visual axis as a parametrized line (wrt. head)
-  return Eigen::ParametrizedLine<double, 3>(optical_axis.pointAt(distance_eyeball_cornea_), visual_axis_unit_vect);
+  return Eigen::ParametrizedLine<double, 3>(optical_axis.pointAt(distance_eyeball_cornea), visual_axis_unit_vect);
 }
 
 //////////////////
@@ -173,22 +174,30 @@ RgbdGaze::RgbdGaze() : Node(NODE_NAME),
   this->declare_parameter<bool>("publish_markers", true);
 
   // User specific parameters obtained via calibration
-  this->declare_parameter<std::string>("user.id", "");
-  // Left eye
-  eye_models_[EYE_LEFT].eyeball_centre_[0] = this->declare_parameter<double>("user.eyes.left.eyeball_centre.x", 0.0);
-  eye_models_[EYE_LEFT].eyeball_centre_[1] = this->declare_parameter<double>("user.eyes.left.eyeball_centre.y", 0.0);
-  eye_models_[EYE_LEFT].eyeball_centre_[2] = this->declare_parameter<double>("user.eyes.left.eyeball_centre.z", 0.0);
-  eye_models_[EYE_LEFT].alpha_ = this->declare_parameter<double>("user.eyes.left.kappa.alpha", 0.0);
-  eye_models_[EYE_LEFT].beta_ = this->declare_parameter<double>("user.eyes.left.kappa.beta", 0.0);
-  eye_models_[EYE_LEFT].distance_eyeball_cornea_ = this->declare_parameter<double>("user.eyes.left.distance_eyeball_cornea", 0.0);
-  // Right eye
-  eye_models_[EYE_RIGHT].eyeball_centre_[0] = this->declare_parameter<double>("user.eyes.right.eyeball_centre.x", 0.0);
-  eye_models_[EYE_RIGHT].eyeball_centre_[1] = this->declare_parameter<double>("user.eyes.right.eyeball_centre.y", 0.0);
-  eye_models_[EYE_RIGHT].eyeball_centre_[2] = this->declare_parameter<double>("user.eyes.right.eyeball_centre.z", 0.0);
-  eye_models_[EYE_RIGHT].alpha_ = this->declare_parameter<double>("user.eyes.right.kappa.alpha", 0.0);
-  eye_models_[EYE_RIGHT].beta_ = this->declare_parameter<double>("user.eyes.right.kappa.beta", 0.0);
-  eye_models_[EYE_RIGHT].distance_eyeball_cornea_ = this->declare_parameter<double>("user.eyes.right.distance_eyeball_cornea", 0.0);
-  RCLCPP_INFO(this->get_logger(), "Loaded parameters for user %s", this->get_parameter("user.id").get_value<std::string>().c_str());
+  this->declare_parameter<std::string>("user.id", "default");
+  for (uint8_t eye = 0; eye < 2; eye++)
+  {
+    std::string eye_side;
+    int8_t side;
+    if (eye == EYE_LEFT)
+    {
+      side = -1;
+      eye_side = "left";
+    }
+    else
+    {
+      side = 1;
+      eye_side = "right";
+    }
+    eye_models_[eye].eyeball_centre[0] = this->declare_parameter<double>("user.eyes." + eye_side + ".eyeball_centre.x", side * 0.033);
+    eye_models_[eye].eyeball_centre[1] = this->declare_parameter<double>("user.eyes." + eye_side + ".eyeball_centre.y", -0.002);
+    eye_models_[eye].eyeball_centre[2] = this->declare_parameter<double>("user.eyes." + eye_side + ".eyeball_centre.z", -0.005);
+    eye_models_[eye].eyeball_radius = this->declare_parameter<double>("user.eyes." + eye_side + ".eyeball_radius", 0.012);
+    eye_models_[eye].alpha = this->declare_parameter<double>("user.eyes." + eye_side + ".kappa.alpha", 0.0);
+    eye_models_[eye].beta = this->declare_parameter<double>("user.eyes." + eye_side + ".kappa.beta", 0.0);
+    eye_models_[eye].distance_eyeball_cornea = this->declare_parameter<double>("user.eyes." + eye_side + ".distance_eyeball_cornea", 0.0);
+  }
+  RCLCPP_INFO(this->get_logger(), "Loaded parameters for user \"%s\"", this->get_parameter("user.id").get_value<std::string>().c_str());
 
   RCLCPP_INFO(this->get_logger(), "Node initialised");
 }
@@ -213,7 +222,7 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
     optical_axis[eye] = eye_models_[eye].determine_optical_axis(head_pose, pupil_centres[eye]);
     visual_axis[eye] = eye_models_[eye].determine_visual_axis(optical_axis[eye]);
 
-    // Transform optical and visual axis into camera coordinate system
+    // Transform optical and visual axes into camera coordinate system
     transform_to_camera_frame(optical_axis[eye], head_pose);
     transform_to_camera_frame(visual_axis[eye], head_pose);
   }
@@ -288,9 +297,9 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
         pupil_centre_marker.id = 0;
         pupil_centre_marker.type = visualization_msgs::msg::Marker::SPHERE;
         pupil_centre_marker.pose.position = Eigen::toMsg(pupil_centres[eye]);
-        pupil_centre_marker.scale.x = VISUAL_PUPIL_CENTRE_SCALE;
-        pupil_centre_marker.scale.y = VISUAL_PUPIL_CENTRE_SCALE;
-        pupil_centre_marker.scale.z = VISUAL_PUPIL_CENTRE_SCALE;
+        pupil_centre_marker.scale.x =
+            pupil_centre_marker.scale.y =
+                pupil_centre_marker.scale.z = VISUAL_PUPIL_CENTRE_SCALE;
         pupil_centre_marker.color.r = VISUAL_PUPIL_CENTRE_COLOR[0];
         pupil_centre_marker.color.g = VISUAL_PUPIL_CENTRE_COLOR[1];
         pupil_centre_marker.color.b = VISUAL_PUPIL_CENTRE_COLOR[2];
@@ -300,18 +309,18 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
 
       // Eyeball centre
       {
-        visualization_msgs::msg::Marker eyeball_centre_marker = default_marker;
-        eyeball_centre_marker.id = 1;
-        eyeball_centre_marker.type = visualization_msgs::msg::Marker::SPHERE;
-        eyeball_centre_marker.pose.position = Eigen::toMsg(optical_axis[eye].origin());
-        eyeball_centre_marker.scale.x = VISUAL_EYEBALL_CENTRE_SCALE;
-        eyeball_centre_marker.scale.y = VISUAL_EYEBALL_CENTRE_SCALE;
-        eyeball_centre_marker.scale.z = VISUAL_EYEBALL_CENTRE_SCALE;
-        eyeball_centre_marker.color.r = VISUAL_EYEBALL_CENTRE_COLOR[0];
-        eyeball_centre_marker.color.g = VISUAL_EYEBALL_CENTRE_COLOR[1];
-        eyeball_centre_marker.color.b = VISUAL_EYEBALL_CENTRE_COLOR[2];
-        eyeball_centre_marker.color.a = VISUAL_EYEBALL_CENTRE_COLOR[3];
-        markers.markers.push_back(eyeball_centre_marker);
+        visualization_msgs::msg::Marker eyeball_centremarker = default_marker;
+        eyeball_centremarker.id = 1;
+        eyeball_centremarker.type = visualization_msgs::msg::Marker::SPHERE;
+        eyeball_centremarker.pose.position = Eigen::toMsg(optical_axis[eye].origin());
+        eyeball_centremarker.scale.x =
+            eyeball_centremarker.scale.y =
+                eyeball_centremarker.scale.z = 2 * eye_models_[eye].eyeball_radius;
+        eyeball_centremarker.color.r = VISUAL_EYEBALL_CENTRE_COLOR[0];
+        eyeball_centremarker.color.g = VISUAL_EYEBALL_CENTRE_COLOR[1];
+        eyeball_centremarker.color.b = VISUAL_EYEBALL_CENTRE_COLOR[2];
+        eyeball_centremarker.color.a = VISUAL_EYEBALL_CENTRE_COLOR[3];
+        markers.markers.push_back(eyeball_centremarker);
       }
 
       // Cornea centre
@@ -320,9 +329,9 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
         cornea_centre_marker.id = 2;
         cornea_centre_marker.type = visualization_msgs::msg::Marker::SPHERE;
         cornea_centre_marker.pose.position = Eigen::toMsg(visual_axis[eye].origin());
-        cornea_centre_marker.scale.x = VISUAL_CORNEA_CENTRE_SCALE;
-        cornea_centre_marker.scale.y = VISUAL_CORNEA_CENTRE_SCALE;
-        cornea_centre_marker.scale.z = VISUAL_CORNEA_CENTRE_SCALE;
+        cornea_centre_marker.scale.x =
+            cornea_centre_marker.scale.y =
+                cornea_centre_marker.scale.z = VISUAL_CORNEA_CENTRE_SCALE;
         cornea_centre_marker.color.r = VISUAL_CORNEA_CENTRE_COLOR[0];
         cornea_centre_marker.color.g = VISUAL_CORNEA_CENTRE_COLOR[1];
         cornea_centre_marker.color.b = VISUAL_CORNEA_CENTRE_COLOR[2];
@@ -333,6 +342,7 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
       // Optical axis
       {
         visualization_msgs::msg::Marker optical_axis_marker = default_marker;
+        // optical_axis_marker.header.frame_id = "head";
         optical_axis_marker.id = 3;
         optical_axis_marker.type = visualization_msgs::msg::Marker::ARROW;
         geometry_msgs::msg::Point start, end;
@@ -341,8 +351,8 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
         optical_axis_marker.points.push_back(start);
         optical_axis_marker.points.push_back(end);
         optical_axis_marker.scale.x = VISUAL_OPTICAL_AXIS_WIDTH;
-        optical_axis_marker.scale.y = 0;
-        optical_axis_marker.scale.z = 0;
+        optical_axis_marker.scale.y =
+            optical_axis_marker.scale.z = 0;
         optical_axis_marker.color.r = VISUAL_OPTICAL_AXIS_COLOR[0];
         optical_axis_marker.color.g = VISUAL_OPTICAL_AXIS_COLOR[1];
         optical_axis_marker.color.b = VISUAL_OPTICAL_AXIS_COLOR[2];
@@ -350,7 +360,7 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
         markers.markers.push_back(optical_axis_marker);
       }
 
-      // Optical axis
+      // Visual axis
       {
         visualization_msgs::msg::Marker visual_axis_marker = default_marker;
         visual_axis_marker.id = 4;
@@ -361,8 +371,8 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
         visual_axis_marker.points.push_back(start);
         visual_axis_marker.points.push_back(end);
         visual_axis_marker.scale.x = VISUAL_VISUAL_AXIS_WIDTH;
-        visual_axis_marker.scale.y = 0;
-        visual_axis_marker.scale.z = 0;
+        visual_axis_marker.scale.y =
+            visual_axis_marker.scale.z = 0;
         visual_axis_marker.color.r = VISUAL_VISUAL_AXIS_COLOR[0];
         visual_axis_marker.color.g = VISUAL_VISUAL_AXIS_COLOR[1];
         visual_axis_marker.color.b = VISUAL_VISUAL_AXIS_COLOR[2];

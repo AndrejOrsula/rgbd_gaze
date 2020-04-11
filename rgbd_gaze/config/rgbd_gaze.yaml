@@ -1,6 +1,5 @@
 rgbd_gaze:
   ros__parameters:
-    broadcast_tf: true
+    broadcast_tf: false
     publish_markers: true
-    visualise: true
-    use_sim_time: true
+    use_sim_time: false

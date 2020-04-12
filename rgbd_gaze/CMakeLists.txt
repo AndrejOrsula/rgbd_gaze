@@ -79,7 +79,7 @@ ament_target_dependencies(
 # Install targets
 install(TARGETS ${EXECUTABLE_0} ${EXECUTABLE_1} DESTINATION lib/${PROJECT_NAME})
 # Install directories
-install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY config launch users DESTINATION share/${PROJECT_NAME})
 
 # Setup the project
 ament_package()

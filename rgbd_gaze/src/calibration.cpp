@@ -96,11 +96,11 @@ private:
 
   /// Publisher of visualisation markers
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
-  /// Publisher of point cloud containing cummulative contours of eyelids
+  /// Publisher of point cloud containing cumulative contours of eyelids
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pc_;
 
-  /// Cummulative point cloud of the observer eyelid contours
-  pcl::PointCloud<pcl::PointXYZ>::Ptr eyelids_cummulative_[2];
+  /// Cumulative point clouds of the observer eyelid contours
+  pcl::PointCloud<pcl::PointXYZ>::Ptr eyelids_cumulative_[2];
 
   /// Number of times that the synchronised epoch was called
   uint64_t epoch_;
@@ -121,11 +121,11 @@ RgbdGaze::RgbdGaze() : Node(NODE_NAME),
 
   // Register publisher of the visualisation markers
   rclcpp::QoS qos_markers = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
-  pub_markers_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("rgbd_gaze_calibration_markers", qos_markers);
+  pub_markers_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("visualisation_markers", qos_markers);
 
   // Register publisher of the eyelid contours point cloud
   rclcpp::QoS qos_pc = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
-  pub_pc_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("eyelid_contour_pc", qos_pc);
+  pub_pc_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("eyelid_contours_cumulative", qos_pc);
 
   // Parameters of the element
   this->declare_parameter<double>("eyeball_radius.min", 0.0105);
@@ -139,10 +139,10 @@ RgbdGaze::RgbdGaze() : Node(NODE_NAME),
   // Initialise point clouds
   for (uint8_t eye = 0; eye < 2; eye++)
   {
-    eyelids_cummulative_[eye].reset(new pcl::PointCloud<pcl::PointXYZ>);
-    eyelids_cummulative_[eye]->is_dense = true;
-    eyelids_cummulative_[eye]->height = 1;
-    eyelids_cummulative_[eye]->width = 0;
+    eyelids_cumulative_[eye].reset(new pcl::PointCloud<pcl::PointXYZ>);
+    eyelids_cumulative_[eye]->is_dense = true;
+    eyelids_cumulative_[eye]->height = 1;
+    eyelids_cumulative_[eye]->width = 0;
   }
 
   RCLCPP_INFO(this->get_logger(), "Node initialised");
@@ -157,7 +157,7 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
   Eigen::Affine3d head_pose;
   tf2::fromMsg(msg_head_pose->pose, head_pose);
 
-  // Iterate over both eyes and add observer eyelid contours into the cummulative point clouds
+  // Iterate over both eyes and add observer eyelid contours into the cumulative point clouds
   for (uint8_t eye = 0; eye < 2; eye++)
   {
     for (auto &&point_msg : msg_eyelid_contours->eyes.eyelids[eye].contour)
@@ -170,8 +170,8 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
       // Transform pupil centre to head coordinates to gain head pose invariance
       Eigen::Vector3d point = head_pose.inverse() * point_wrt_camera;
 
-      // Add the point to the cummulative point cloud
-      eyelids_cummulative_[eye]->push_back(pcl::PointXYZ(point[0], point[1], point[2]));
+      // Add the point to the cumulative point cloud
+      eyelids_cumulative_[eye]->push_back(pcl::PointXYZ(point[0], point[1], point[2]));
     }
   }
 
@@ -183,7 +183,7 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
     for (uint8_t eye = 0; eye < 2; eye++)
     {
       pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud(new pcl::PointCloud<pcl::PointXYZ>());
-      pcl::transformPointCloud(*eyelids_cummulative_[eye], *transformed_cloud, head_pose);
+      pcl::transformPointCloud(*eyelids_cumulative_[eye], *transformed_cloud, head_pose);
       pcl::toROSMsg(*transformed_cloud, single_eyelid_pcs[eye]);
     }
 
@@ -210,9 +210,9 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
   for (uint8_t eye = 0; eye < 2; eye++)
   {
 
-    // Create sample consensus model for the eyeball, approximated by a sphere and use cummulative eyelid point clouds as input
+    // Create sample consensus model for the eyeball, approximated by a sphere and use cumulative eyelid point clouds as input
     pcl::SampleConsensusModelSphere<pcl::PointXYZ>::Ptr
-        sphere_sac_model(new pcl::SampleConsensusModelSphere<pcl::PointXYZ>(eyelids_cummulative_[eye]));
+        sphere_sac_model(new pcl::SampleConsensusModelSphere<pcl::PointXYZ>(eyelids_cumulative_[eye]));
 
     // Set limits on the eyeball size, defaults to human average
     sphere_sac_model->setRadiusLimits(this->get_parameter("eyeball_radius.min").get_value<double>(),
@@ -234,21 +234,27 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
   }
 
   // Print results
-  RCLCPP_INFO(this->get_logger(), "-- Results of epoch #%d --", epoch_);
-  for (uint8_t eye = 0; eye < 2; eye++)
   {
-    std::string eye_side;
-    if (eye == EYE_LEFT)
+    std::string output_string;
+    output_string = "Results of epoch #" + std::to_string(epoch_);
+    for (uint8_t eye = 0; eye < 2; eye++)
     {
-      eye_side = "left";
+      std::string eye_side;
+      if (eye == EYE_LEFT)
+      {
+        eye_side = "left";
+      }
+      else
+      {
+        eye_side = "right";
+      }
+
+      output_string += "\n" + eye_side + ":\n\teyeball_centre:\n\t\tx: " + std::to_string(eyeball_centres[eye][0]) +
+                       "\n\t\ty: " + std::to_string(eyeball_centres[eye][1]) +
+                       "\n\t\tz: " + std::to_string(eyeball_centres[eye][2]) +
+                       "\n\teyeball_radius: " + std::to_string(eyeball_radii[eye]);
     }
-    else
-    {
-      eye_side = "right";
-    }
-    RCLCPP_INFO(this->get_logger(),
-                "\n" + eye_side + ":\n\teyeball_centre:\n\t\tx: %f\n\t\ty: %f\n\t\tz: %f\n\teyeball_radius: %f",
-                eyeball_centres[eye][0], eyeball_centres[eye][1], eyeball_centres[eye][2], eyeball_radii[eye]);
+    RCLCPP_INFO(this->get_logger(), output_string);
   }
 
   // Publish eyeball as a visualisation marker, if desired

@@ -167,7 +167,7 @@ RgbdGaze::RgbdGaze() : Node(NODE_NAME),
 
   // Register publisher of visualisation markers
   rclcpp::QoS qos = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
-  pub_markers_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("rgbd_gaze_markers", qos);
+  pub_markers_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("visualisation_markers", qos);
 
   // Parameters of the element
   this->declare_parameter<bool>("broadcast_tf", false);

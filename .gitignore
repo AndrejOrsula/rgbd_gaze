@@ -6,3 +6,7 @@
 # VScode
 **/.code-workspace
 **/.vscode
+
+# User-specific calibrations
+rgbd_gaze/users/*
+!rgbd_gaze/users/default.yaml

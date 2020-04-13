@@ -55,12 +55,11 @@ const uint8_t EYE_LEFT = 0;
 /// Index of the right eye
 const uint8_t EYE_RIGHT = 1;
 
-/// Determines how often to fit the observed eyelid point into the eyeball
-const uint8_t FIT_MODEL_EVERY_X_EPOCHS = 5;
+/// If enabled, model is fit every epoch. Otherwise, model is fit every `FIT_MODEL_FREQUENCY^n` epochs (rounded up).
+const bool FIT_MODEL_EVERY_EPOCH = false;
+const float FIT_MODEL_FREQUENCY = 1.5;
 
-const float VISUAL_PUPIL_CENTRE_SCALE = 0.005;
-const float VISUAL_PUPIL_CENTRE_COLOR[] = {0.25, 0.25, 1.0, 1};
-const float VISUAL_EYEBALL_COLOR[] = {0, 0.75, 0, 1};
+const float VISUAL_EYEBALL_COLOR[] = {0, 0, 0.5, 0.75};
 
 /////////////
 /// TYPES ///
@@ -104,6 +103,7 @@ private:
 
   /// Number of times that the synchronised epoch was called
   uint64_t epoch_;
+  uint16_t every_x_epochs_;
 
   /// Callback called each time a message is received on all topics
   void synchronized_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg_head_pose,
@@ -114,18 +114,11 @@ RgbdGaze::RgbdGaze() : Node(NODE_NAME),
                        sub_head_pose_(this, "head_pose"),
                        sub_eyelid_contours_(this, "eyelid_contours"),
                        synchronizer_(synchronizer_policy(SYNCHRONIZER_QUEUE_SIZE), sub_head_pose_, sub_eyelid_contours_),
-                       epoch_(0)
+                       epoch_(0),
+                       every_x_epochs_(1)
 {
   // Synchronize the subscriptions under a single callback
   synchronizer_.registerCallback(&RgbdGaze::synchronized_callback, this);
-
-  // Register publisher of the visualisation markers
-  rclcpp::QoS qos_markers = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
-  pub_markers_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("visualisation_markers", qos_markers);
-
-  // Register publisher of the eyelid contours point cloud
-  rclcpp::QoS qos_pc = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
-  pub_pc_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("eyelid_contours_cumulative", qos_pc);
 
   // Parameters of the element
   this->declare_parameter<double>("eyeball_radius.min", 0.0105);
@@ -135,6 +128,20 @@ RgbdGaze::RgbdGaze() : Node(NODE_NAME),
   this->declare_parameter<int>("sample_consensus.max_iterations", 1000);
   this->declare_parameter<bool>("publish_markers", true);
   this->declare_parameter<bool>("publish_eyelid_pc", true);
+
+  // Register publisher of the visualisation markers
+  if (this->get_parameter("publish_markers").get_value<bool>())
+  {
+    rclcpp::QoS qos_markers = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
+    pub_markers_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("visualisation_markers", qos_markers);
+  }
+
+  // Register publisher of the eyelid contours point cloud
+  if (this->get_parameter("publish_eyelid_pc").get_value<bool>())
+  {
+    rclcpp::QoS qos_pc = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
+    pub_pc_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("eyelid_contours_cumulative", qos_pc);
+  }
 
   // Initialise point clouds
   for (uint8_t eye = 0; eye < 2; eye++)
@@ -196,10 +203,15 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
     pub_pc_->publish(both_eyes_pc);
   }
 
-  // Increment epoch and continue only if necessary
-  if (FIT_MODEL_EVERY_X_EPOCHS > 0 && ++epoch_ % FIT_MODEL_EVERY_X_EPOCHS != 0)
+  epoch_++;
+  if (!FIT_MODEL_EVERY_EPOCH)
   {
-    return;
+    // Increment epoch and continue only if necessary
+    if (epoch_ % every_x_epochs_ != 0)
+    {
+      return;
+    }
+    every_x_epochs_ = std::ceil(every_x_epochs_ * FIT_MODEL_FREQUENCY);
   }
 
   // Create output for the fitted eyeball (w.r.t head)

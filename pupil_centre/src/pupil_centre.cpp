@@ -66,7 +66,7 @@ const double MINIMUM_GRADIENT_SIGNIFICANCE = 0.25;
 /// Determines whether to enable postprocessing of the objective funtion that can resolve problems with local minima close to image borders.
 const bool POSTPROCESS_OBJECTIVE_FUNCTION = true;
 /// Treshold used during postprocessing that determines size of blobs that are removed, if connected to image boundary.
-const uint8_t POSTPROCESS_THRESHOLD = 230;
+const uint8_t POSTPROCESS_THRESHOLD = 200;
 /// Determines the neighbourhood size around detected 2D pupil centre that is considered to estimation of its 3D position
 const uint8_t PUPIL_3D_NEIGHBOURHOOD_SIZE = 3;
 

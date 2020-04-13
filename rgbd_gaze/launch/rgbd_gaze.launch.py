@@ -116,7 +116,9 @@ def generate_launch_description():
             parameters=[config_rgbd_gaze, user],
             remappings=[('head_pose', 'rgbd_gaze/head_pose'),
                         ('pupil_centres', 'rgbd_gaze/pupil_centres'),
-                        ('visualisation_markers', 'rgbd_gaze/visualisation_markers')],
+                        ('visualisation_markers', 'rgbd_gaze/visualisation_markers'),
+                        ('visual_axes', 'rgbd_gaze/visual_axes'),
+                        ('compound_gaze', 'rgbd_gaze/compound_gaze')],
         ),
 
         IncludeLaunchDescription(

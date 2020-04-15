@@ -13,7 +13,7 @@ rgbd_gaze:
 
           kappa:
             alpha: -0.0262
-            beta: -0.0785
+            beta: 0.0785
           distance_eyeball_cornea: 0.0053
 
         right:
@@ -25,5 +25,5 @@ rgbd_gaze:
 
           kappa:
             alpha: -0.0262
-            beta: 0.0785
+            beta: -0.0785
           distance_eyeball_cornea: 0.0053

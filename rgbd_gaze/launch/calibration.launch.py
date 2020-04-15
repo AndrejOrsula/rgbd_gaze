@@ -39,13 +39,6 @@ def generate_launch_description():
             default_value=config_rviz2,
             description='Path to config for RViz2'),
 
-        # TODO: REMOVE
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                [os.path.join(get_package_share_directory('ecard'), 'launch',
-                              'rs', 'rs_face_d415.launch.py')]),
-        ),
-
         Node(
             package='openface',
             node_executable='openface_separate',

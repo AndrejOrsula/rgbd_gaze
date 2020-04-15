@@ -19,7 +19,7 @@ def generate_launch_description():
     config_rgbd_gaze_calibration = LaunchConfiguration('config_rgbd_gaze_calibration', default=os.path.join(get_package_share_directory(
         'rgbd_gaze'), 'config', 'calibration', 'rgbd_gaze_calibration.yaml'))
     config_rviz2 = LaunchConfiguration('config_rviz2', default=os.path.join(get_package_share_directory(
-        'rgbd_gaze'), 'config', 'calibration', 'rviz2.yaml'))
+        'rgbd_gaze'), 'config', 'calibration', 'rviz2.rviz'))
 
     return LaunchDescription([
         DeclareLaunchArgument(

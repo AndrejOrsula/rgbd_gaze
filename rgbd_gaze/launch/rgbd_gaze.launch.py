@@ -23,7 +23,7 @@ def generate_launch_description():
     user = LaunchConfiguration('user', default=os.path.join(get_package_share_directory(
         'rgbd_gaze'), 'users', 'default.yaml'))
     config_rviz2 = LaunchConfiguration('config_rviz2', default=os.path.join(get_package_share_directory(
-        'rgbd_gaze'), 'config', 'rviz2.yaml'))
+        'rgbd_gaze'), 'config', 'rviz2.rviz'))
 
     return LaunchDescription([
         DeclareLaunchArgument(

@@ -16,17 +16,11 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <eye_region_msgs/msg/eye_regions_of_interest_stamped.hpp>
-#include <rgbd_gaze_msgs/msg/pupil_centres_stamped.hpp>
+#include <gaze_msgs/msg/pupil_centres_stamped.hpp>
 
 // OpenCV
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
-
-//////////////////
-/// NAMESPACES ///
-//////////////////
-
-using namespace std::placeholders;
 
 /////////////////
 /// CONSTANTS ///
@@ -34,7 +28,7 @@ using namespace std::placeholders;
 
 /// The name of this node
 const std::string NODE_NAME = "pupil_centre";
-/// Size of the qeueu size used by the synchronizer in its policy
+/// Size of the queue size used by the synchronizer in its policy
 const uint8_t SYNCHRONIZER_QUEUE_SIZE = 2;
 
 /// Index of the left eye
@@ -202,7 +196,7 @@ private:
   message_filters::Synchronizer<synchronizer_policy> synchronizer_;
 
   /// Publisher of the pupil centres
-  rclcpp::Publisher<rgbd_gaze_msgs::msg::PupilCentresStamped>::SharedPtr pub_pupil_centres_;
+  rclcpp::Publisher<gaze_msgs::msg::PupilCentresStamped>::SharedPtr pub_pupil_centres_;
 
   /// Callback called each time a message is received on all topics
   void synchronized_callback(const sensor_msgs::msg::Image::SharedPtr msg_img_color,
@@ -241,7 +235,7 @@ PupilCentre::PupilCentre() : Node(NODE_NAME),
 
   // Register publisher of the pupil centres
   rclcpp::QoS qos = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
-  pub_pupil_centres_ = this->create_publisher<rgbd_gaze_msgs::msg::PupilCentresStamped>("pupil_centres", qos);
+  pub_pupil_centres_ = this->create_publisher<gaze_msgs::msg::PupilCentresStamped>("pupil_centres", qos);
 
   // Parameters of the element
   this->declare_parameter<bool>("visualise", true);
@@ -257,7 +251,7 @@ void PupilCentre::synchronized_callback(const sensor_msgs::msg::Image::SharedPtr
   RCLCPP_DEBUG(this->get_logger(), "Received synchronized messages for processing");
 
   // Create output msg
-  rgbd_gaze_msgs::msg::PupilCentresStamped pupil_centres;
+  gaze_msgs::msg::PupilCentresStamped pupil_centres;
   pupil_centres.header = msg_img_color->header;
 
   // Convert color and depth images to CV

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(rgbd_gaze_msgs)
+project(gaze_msgs)
 
 # ament_cmake
 find_package(ament_cmake REQUIRED)

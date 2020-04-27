@@ -34,7 +34,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(eyelid_contour_msgs REQUIRED)
-find_package(rgbd_gaze_msgs REQUIRED)
+find_package(gaze_msgs REQUIRED)
 
 # Eigen
 find_package(Eigen3 REQUIRED)
@@ -60,7 +60,7 @@ ament_target_dependencies(
   tf2_ros
   geometry_msgs
   visualization_msgs
-  rgbd_gaze_msgs)
+  gaze_msgs)
 
 # Executable 1
 add_executable(${EXECUTABLE_1} src/${EXECUTABLE_1}.cpp)

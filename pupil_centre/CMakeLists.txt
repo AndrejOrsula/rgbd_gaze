@@ -31,7 +31,7 @@ find_package(cv_bridge REQUIRED)
 # ROS2 interfaces
 find_package(sensor_msgs REQUIRED)
 find_package(eye_region_msgs REQUIRED)
-find_package(rgbd_gaze_msgs REQUIRED)
+find_package(gaze_msgs REQUIRED)
 # OpenCV 4
 find_package(OpenCV 4 REQUIRED)
 
@@ -58,7 +58,7 @@ ament_target_dependencies(
   cv_bridge
   sensor_msgs
   eye_region_msgs
-  rgbd_gaze_msgs)
+  gaze_msgs)
 
 # Install targets
 install(TARGETS ${EXECUTABLE_0} DESTINATION lib/${PROJECT_NAME})

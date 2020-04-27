@@ -16,18 +16,12 @@
 // ROS 2 interfaces
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
-#include <rgbd_gaze_msgs/msg/pupil_centres_stamped.hpp>
-#include <rgbd_gaze_msgs/msg/gaze_stamped.hpp>
-#include <rgbd_gaze_msgs/msg/gaze_binocular_stamped.hpp>
+#include <gaze_msgs/msg/pupil_centres_stamped.hpp>
+#include <gaze_msgs/msg/gaze_stamped.hpp>
+#include <gaze_msgs/msg/gaze_binocular_stamped.hpp>
 
 // Eigen
 #include <Eigen/Geometry>
-
-//////////////////
-/// NAMESPACES ///
-//////////////////
-
-using namespace std::placeholders;
 
 /////////////////
 /// CONSTANTS ///
@@ -35,7 +29,7 @@ using namespace std::placeholders;
 
 /// The name of this node
 const std::string NODE_NAME = "rgbd_gaze";
-/// Size of the qeueu size used by the synchronizer in its policy
+/// Size of the queue size used by the synchronizer in its policy
 const uint8_t SYNCHRONIZER_QUEUE_SIZE = 10;
 
 /// Index of the left eye
@@ -69,7 +63,7 @@ const float VISUAL_COMPOUND_GAZE_COLOR[] = {0, 0, 1.0, 1};
 
 /// Policy of the synchronizer
 typedef message_filters::sync_policies::ExactTime<geometry_msgs::msg::PoseStamped,
-                                                  rgbd_gaze_msgs::msg::PupilCentresStamped>
+                                                  gaze_msgs::msg::PupilCentresStamped>
     synchronizer_policy;
 
 ////////////////////////
@@ -84,9 +78,9 @@ void transform_to_camera_frame(Eigen::ParametrizedLine<double, 3> &parametrized_
 
 namespace Eigen
 {
-rgbd_gaze_msgs::msg::Gaze to_msg(Eigen::ParametrizedLine<double, 3> &parametrized_line)
+gaze_msgs::msg::Gaze toMsg(Eigen::ParametrizedLine<double, 3> &parametrized_line)
 {
-  rgbd_gaze_msgs::msg::Gaze gaze;
+  gaze_msgs::msg::Gaze gaze;
   gaze.eyeball_centre = Eigen::toMsg(parametrized_line.origin());
   Eigen::Vector3d direction = parametrized_line.direction();
   gaze.visual_axis.x = direction[0];
@@ -157,7 +151,7 @@ private:
   /// Subscriber to the head pose
   message_filters::Subscriber<geometry_msgs::msg::PoseStamped> sub_head_pose_;
   /// Subscriber to pupil centres
-  message_filters::Subscriber<rgbd_gaze_msgs::msg::PupilCentresStamped> sub_pupil_centres_;
+  message_filters::Subscriber<gaze_msgs::msg::PupilCentresStamped> sub_pupil_centres_;
 
   /// Synchronizer of the subscribers
   message_filters::Synchronizer<synchronizer_policy> synchronizer_;
@@ -166,9 +160,9 @@ private:
   Eye3dModel eye_models_[2];
 
   /// Publisher of the visual axes
-  rclcpp::Publisher<rgbd_gaze_msgs::msg::GazeBinocularStamped>::SharedPtr pub_visual_axes_;
+  rclcpp::Publisher<gaze_msgs::msg::GazeBinocularStamped>::SharedPtr pub_visual_axes_;
   /// Publisher of compound gaze
-  rclcpp::Publisher<rgbd_gaze_msgs::msg::GazeStamped>::SharedPtr pub_compound_gaze_;
+  rclcpp::Publisher<gaze_msgs::msg::GazeStamped>::SharedPtr pub_compound_gaze_;
   /// Publisher of visualisation markers
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
 
@@ -177,7 +171,7 @@ private:
 
   /// Callback called each time a message is received on all topics
   void synchronized_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg_head_pose,
-                             const rgbd_gaze_msgs::msg::PupilCentresStamped::SharedPtr msg_pupil_centres);
+                             const gaze_msgs::msg::PupilCentresStamped::SharedPtr msg_pupil_centres);
 };
 
 RgbdGaze::RgbdGaze() : Node(NODE_NAME),
@@ -196,13 +190,13 @@ RgbdGaze::RgbdGaze() : Node(NODE_NAME),
 
   // Register publisher of visual axes
   rclcpp::QoS qos_visual_axes = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
-  pub_visual_axes_ = this->create_publisher<rgbd_gaze_msgs::msg::GazeBinocularStamped>("visual_axes", qos_visual_axes);
+  pub_visual_axes_ = this->create_publisher<gaze_msgs::msg::GazeBinocularStamped>("visual_axes", qos_visual_axes);
 
   // Register publisher of compound gaze
   if (this->get_parameter("publish_compound_gaze").get_value<bool>())
   {
     rclcpp::QoS qos_compound_gaze = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
-    pub_compound_gaze_ = this->create_publisher<rgbd_gaze_msgs::msg::GazeStamped>("compound_gaze", qos_compound_gaze);
+    pub_compound_gaze_ = this->create_publisher<gaze_msgs::msg::GazeStamped>("compound_gaze", qos_compound_gaze);
   }
 
   // Register publisher of visualisation markers
@@ -242,7 +236,7 @@ RgbdGaze::RgbdGaze() : Node(NODE_NAME),
 }
 
 void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg_head_pose,
-                                     const rgbd_gaze_msgs::msg::PupilCentresStamped::SharedPtr msg_pupil_centres)
+                                     const gaze_msgs::msg::PupilCentresStamped::SharedPtr msg_pupil_centres)
 {
   RCLCPP_DEBUG(this->get_logger(), "Received synchronized messages for processing");
 
@@ -251,7 +245,7 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
   tf2::fromMsg(msg_head_pose->pose, head_pose);
 
   // Create output msg
-  rgbd_gaze_msgs::msg::GazeBinocularStamped visual_axes_msg;
+  gaze_msgs::msg::GazeBinocularStamped visual_axes_msg;
   visual_axes_msg.header = msg_head_pose->header;
 
   Eigen::Vector3d pupil_centres[2];
@@ -270,7 +264,7 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
     transform_to_camera_frame(visual_axis[eye], head_pose);
 
     // Fill message
-    visual_axes_msg.gaze[eye] = Eigen::to_msg(visual_axis[eye]);
+    visual_axes_msg.gaze[eye] = Eigen::toMsg(visual_axis[eye]);
   }
   // Publish message
   pub_visual_axes_->publish(visual_axes_msg);
@@ -282,11 +276,11 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
     compound_gaze = Eigen::ParametrizedLine<double, 3>(head_pose.translation(), (visual_axis[EYE_LEFT].direction() + visual_axis[EYE_RIGHT].direction()) / 2.0);
 
     // Create output msg
-    rgbd_gaze_msgs::msg::GazeStamped compound_gaze_msg;
+    gaze_msgs::msg::GazeStamped compound_gaze_msg;
     compound_gaze_msg.header = msg_head_pose->header;
 
     // Fill message
-    compound_gaze_msg.gaze = Eigen::to_msg(compound_gaze);
+    compound_gaze_msg.gaze = Eigen::toMsg(compound_gaze);
 
     // Publish message
     pub_compound_gaze_->publish(compound_gaze_msg);

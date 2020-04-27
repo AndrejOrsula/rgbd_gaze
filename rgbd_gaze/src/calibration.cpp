@@ -25,21 +25,8 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl/common/transforms.h>
-#include <pcl/sample_consensus/ransac.h>
 #include <pcl/sample_consensus/lmeds.h>
-#include <pcl/sample_consensus/msac.h>
-#include <pcl/sample_consensus/rransac.h>
-#include <pcl/sample_consensus/rmsac.h>
-#include <pcl/sample_consensus/mlesac.h>
-#include <pcl/sample_consensus/prosac.h>
 #include <pcl/sample_consensus/sac_model_sphere.h>
-
-//////////////////
-/// NAMESPACES ///
-//////////////////
-
-using namespace std::placeholders;
-using namespace std::chrono_literals;
 
 /////////////////
 /// CONSTANTS ///
@@ -47,7 +34,7 @@ using namespace std::chrono_literals;
 
 /// The name of this node
 const std::string NODE_NAME = "rgbd_gaze_calibration";
-/// Size of the qeueu size used by the synchronizer in its policy
+/// Size of the queue size used by the synchronizer in its policy
 const uint8_t SYNCHRONIZER_QUEUE_SIZE = 10;
 
 /// Index of the left eye
@@ -69,10 +56,6 @@ const float VISUAL_EYEBALL_COLOR[] = {0, 0, 0.5, 0.75};
 typedef message_filters::sync_policies::ExactTime<geometry_msgs::msg::PoseStamped,
                                                   eyelid_contour_msgs::msg::EyelidContoursStamped>
     synchronizer_policy;
-
-////////////////////////
-/// HELPER FUNCTIONS ///
-////////////////////////
 
 //////////////////
 /// NODE CLASS ///

@@ -78,16 +78,16 @@ void transform_to_camera_frame(Eigen::ParametrizedLine<double, 3> &parametrized_
 
 namespace Eigen
 {
-gaze_msgs::msg::Gaze toMsg(Eigen::ParametrizedLine<double, 3> &parametrized_line)
-{
-  gaze_msgs::msg::Gaze gaze;
-  gaze.eyeball_centre = Eigen::toMsg(parametrized_line.origin());
-  Eigen::Vector3d direction = parametrized_line.direction();
-  gaze.visual_axis.x = direction[0];
-  gaze.visual_axis.y = direction[1];
-  gaze.visual_axis.z = direction[2];
-  return gaze;
-}
+  gaze_msgs::msg::Gaze toMsg(Eigen::ParametrizedLine<double, 3> &parametrized_line)
+  {
+    gaze_msgs::msg::Gaze gaze;
+    gaze.origin = Eigen::toMsg(parametrized_line.origin());
+    Eigen::Vector3d direction = parametrized_line.direction();
+    gaze.direction.x = direction[0];
+    gaze.direction.y = direction[1];
+    gaze.direction.z = direction[2];
+    return gaze;
+  }
 } // namespace Eigen
 
 ////////////////////
@@ -159,6 +159,8 @@ private:
   /// Eye model parameters based on specific user calibration
   Eye3dModel eye_models_[2];
 
+  /// Publisher of the optical axes
+  rclcpp::Publisher<gaze_msgs::msg::GazeBinocularStamped>::SharedPtr pub_optical_axes_;
   /// Publisher of the visual axes
   rclcpp::Publisher<gaze_msgs::msg::GazeBinocularStamped>::SharedPtr pub_visual_axes_;
   /// Publisher of compound gaze
@@ -184,9 +186,14 @@ RgbdGaze::RgbdGaze() : Node(NODE_NAME),
   synchronizer_.registerCallback(&RgbdGaze::synchronized_callback, this);
 
   // Parameters of the element
+  this->declare_parameter<bool>("optical_axis_origin_at_cornea_centre", true);
   this->declare_parameter<bool>("publish_compound_gaze", true);
   this->declare_parameter<bool>("broadcast_tf", false);
   this->declare_parameter<bool>("publish_markers", true);
+
+  // Register publisher of optical axes
+  rclcpp::QoS qos_optical_axes = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
+  pub_optical_axes_ = this->create_publisher<gaze_msgs::msg::GazeBinocularStamped>("optical_axes", qos_optical_axes);
 
   // Register publisher of visual axes
   rclcpp::QoS qos_visual_axes = rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(rmw_qos_profile_default));
@@ -244,9 +251,9 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
   Eigen::Isometry3d head_pose;
   tf2::fromMsg(msg_head_pose->pose, head_pose);
 
-  // Create output msg
-  gaze_msgs::msg::GazeBinocularStamped visual_axes_msg;
-  visual_axes_msg.header = msg_head_pose->header;
+  // Create output msgs
+  gaze_msgs::msg::GazeBinocularStamped optical_axes_msg, visual_axes_msg;
+  optical_axes_msg.header = visual_axes_msg.header = msg_head_pose->header;
 
   Eigen::Vector3d pupil_centres[2];
   Eigen::ParametrizedLine<double, 3> optical_axis[2], visual_axis[2];
@@ -263,10 +270,19 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
     transform_to_camera_frame(optical_axis[eye], head_pose);
     transform_to_camera_frame(visual_axis[eye], head_pose);
 
-    // Fill message
+    // Fill messages
+    optical_axes_msg.gaze[eye] = Eigen::toMsg(optical_axis[eye]);
     visual_axes_msg.gaze[eye] = Eigen::toMsg(visual_axis[eye]);
+
+    // Use cornea centre for optical axes instead of eyeball centre, if desired
+    if (this->get_parameter("optical_axis_origin_at_cornea_centre").get_value<bool>())
+    {
+      optical_axes_msg.gaze[eye].origin = visual_axes_msg.gaze[eye].origin;
+    }
   }
-  // Publish message
+
+  // Publish messages
+  pub_optical_axes_->publish(optical_axes_msg);
   pub_visual_axes_->publish(visual_axes_msg);
 
   Eigen::ParametrizedLine<double, 3> compound_gaze;
@@ -401,7 +417,6 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
       // Optical axis
       {
         visualization_msgs::msg::Marker optical_axis_marker = default_marker;
-        // optical_axis_marker.header.frame_id = "head";
         optical_axis_marker.id = 3;
         optical_axis_marker.type = visualization_msgs::msg::Marker::ARROW;
         geometry_msgs::msg::Point start, end;
@@ -409,9 +424,9 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
         end = Eigen::toMsg(optical_axis[eye].pointAt(VISUAL_OPTICAL_AXIS_LENGTH));
         optical_axis_marker.points.push_back(start);
         optical_axis_marker.points.push_back(end);
-        optical_axis_marker.scale.x = VISUAL_OPTICAL_AXIS_WIDTH;
-        optical_axis_marker.scale.y =
-            optical_axis_marker.scale.z = 0;
+        optical_axis_marker.scale.x =
+            optical_axis_marker.scale.y = VISUAL_OPTICAL_AXIS_WIDTH;
+        optical_axis_marker.scale.z = 0;
         optical_axis_marker.color.r = VISUAL_OPTICAL_AXIS_COLOR[0];
         optical_axis_marker.color.g = VISUAL_OPTICAL_AXIS_COLOR[1];
         optical_axis_marker.color.b = VISUAL_OPTICAL_AXIS_COLOR[2];
@@ -429,9 +444,9 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
         end = Eigen::toMsg(visual_axis[eye].pointAt(VISUAL_VISUAL_AXIS_LENGTH));
         visual_axis_marker.points.push_back(start);
         visual_axis_marker.points.push_back(end);
-        visual_axis_marker.scale.x = VISUAL_VISUAL_AXIS_WIDTH;
-        visual_axis_marker.scale.y =
-            visual_axis_marker.scale.z = 0;
+        visual_axis_marker.scale.x =
+            visual_axis_marker.scale.y = VISUAL_VISUAL_AXIS_WIDTH;
+        visual_axis_marker.scale.z = 0;
         visual_axis_marker.color.r = VISUAL_VISUAL_AXIS_COLOR[0];
         visual_axis_marker.color.g = VISUAL_VISUAL_AXIS_COLOR[1];
         visual_axis_marker.color.b = VISUAL_VISUAL_AXIS_COLOR[2];
@@ -444,16 +459,17 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
     if (this->get_parameter("publish_compound_gaze").get_value<bool>())
     {
       visualization_msgs::msg::Marker compound_gaze_marker = default_marker;
-      compound_gaze_marker.id = 5;
+      compound_gaze_marker.ns = std::string(this->get_namespace()) + "gaze_compound";
+      compound_gaze_marker.id = 0;
       compound_gaze_marker.type = visualization_msgs::msg::Marker::ARROW;
       geometry_msgs::msg::Point start, end;
       start = Eigen::toMsg(compound_gaze.origin());
       end = Eigen::toMsg(compound_gaze.pointAt(VISUAL_COMPOUND_GAZE_LENGTH));
       compound_gaze_marker.points.push_back(start);
       compound_gaze_marker.points.push_back(end);
-      compound_gaze_marker.scale.x = VISUAL_COMPOUND_GAZE_WIDTH;
-      compound_gaze_marker.scale.y =
-          compound_gaze_marker.scale.z = 0;
+      compound_gaze_marker.scale.x =
+          compound_gaze_marker.scale.y = VISUAL_COMPOUND_GAZE_WIDTH;
+      compound_gaze_marker.scale.z = 0;
       compound_gaze_marker.color.r = VISUAL_COMPOUND_GAZE_COLOR[0];
       compound_gaze_marker.color.g = VISUAL_COMPOUND_GAZE_COLOR[1];
       compound_gaze_marker.color.b = VISUAL_COMPOUND_GAZE_COLOR[2];

@@ -1,4 +1,4 @@
-"""Launch calibration for RGB-D gaze"""
+"""Launch calibration of eyeball for RGB-D gaze"""
 
 import os
 from ament_index_python.packages import get_package_share_directory
@@ -16,8 +16,8 @@ def generate_launch_description():
         'rgbd_gaze'), 'config', 'openface', 'openface_separate_calibration.yaml'))
     config_openface_rgbd_head_pose = LaunchConfiguration('config_openface_rgbd_head_pose', default=os.path.join(get_package_share_directory(
         'rgbd_gaze'), 'config', 'openface', 'openface_rgbd_head_pose.yaml'))
-    config_rgbd_gaze_calibration = LaunchConfiguration('config_rgbd_gaze_calibration', default=os.path.join(get_package_share_directory(
-        'rgbd_gaze'), 'config', 'calibration', 'rgbd_gaze_calibration.yaml'))
+    config_rgbd_gaze_calibration_eyeball = LaunchConfiguration('config_rgbd_gaze_calibration_eyeball', default=os.path.join(get_package_share_directory(
+        'rgbd_gaze'), 'config', 'calibration', 'rgbd_gaze_calibration_eyeball.yaml'))
     config_rviz2 = LaunchConfiguration('config_rviz2', default=os.path.join(get_package_share_directory(
         'rgbd_gaze'), 'config', 'calibration', 'rviz2.rviz'))
 
@@ -31,9 +31,9 @@ def generate_launch_description():
             default_value=config_openface_rgbd_head_pose,
             description='Path to config for RGB-D head pose'),
         DeclareLaunchArgument(
-            'config_rgbd_gaze_calibration',
-            default_value=config_rgbd_gaze_calibration,
-            description='Path to config for RGB-D Gaze calibration'),
+            'config_rgbd_gaze_calibration_eyeball',
+            default_value=config_rgbd_gaze_calibration_eyeball,
+            description='Path to config for RGB-D Gaze calibration for eyeball'),
         DeclareLaunchArgument(
             'config_rviz2',
             default_value=config_rviz2,
@@ -89,11 +89,11 @@ def generate_launch_description():
 
         Node(
             package='rgbd_gaze',
-            node_executable='calibration',
-            node_name='rgbd_gaze_calibration',
+            node_executable='calibration_eyeball',
+            node_name='rgbd_gaze_calibration_eyeball',
             node_namespace='',
             output='screen',
-            parameters=[config_rgbd_gaze_calibration],
+            parameters=[config_rgbd_gaze_calibration_eyeball],
             remappings=[('head_pose', 'rgbd_gaze/head_pose'),
                         ('eyelid_contours', 'rgbd_gaze/eyelid_contours'),
                         ('visualisation_markers', 'rgbd_gaze/visualisation_markers'),

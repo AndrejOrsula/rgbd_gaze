@@ -47,7 +47,8 @@ include_directories(include ${EIGEN3_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS})
 
 # Executables
 set(EXECUTABLE_0 rgbd_gaze)
-set(EXECUTABLE_1 calibration)
+set(EXECUTABLE_1 calibration_eyeball)
+set(EXECUTABLE_2 calibration_kappa)
 
 # Executable 0
 add_executable(${EXECUTABLE_0} src/${EXECUTABLE_0}.cpp)
@@ -64,7 +65,7 @@ ament_target_dependencies(
 
 # Executable 1
 add_executable(${EXECUTABLE_1} src/${EXECUTABLE_1}.cpp)
-target_link_libraries(${EXECUTABLE_1} ${PCL_LIBRARIES})
+target_link_libraries(${EXECUTABLE_1} ${EIGEN3_LIBRARIES} ${PCL_LIBRARIES})
 ament_target_dependencies(
   ${EXECUTABLE_1}
   rclcpp
@@ -76,8 +77,20 @@ ament_target_dependencies(
   visualization_msgs
   eyelid_contour_msgs)
 
+  add_executable(${EXECUTABLE_2} src/${EXECUTABLE_2}.cpp)
+  target_link_libraries(${EXECUTABLE_2} ${EIGEN3_LIBRARIES} ${PCL_LIBRARIES})
+  ament_target_dependencies(
+    ${EXECUTABLE_2}
+    rclcpp
+    message_filters
+    tf2
+    tf2_ros
+    geometry_msgs
+    visualization_msgs
+    gaze_msgs)
+
 # Install targets
-install(TARGETS ${EXECUTABLE_0} ${EXECUTABLE_1} DESTINATION lib/${PROJECT_NAME})
+install(TARGETS ${EXECUTABLE_0} ${EXECUTABLE_1} ${EXECUTABLE_2} DESTINATION lib/${PROJECT_NAME})
 # Install directories
 install(DIRECTORY config launch users DESTINATION share/${PROJECT_NAME})
 

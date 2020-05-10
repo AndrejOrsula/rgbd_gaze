@@ -37,7 +37,7 @@ const uint8_t EYE_LEFT = 0;
 const uint8_t EYE_RIGHT = 1;
 
 /// Weights used to convert BGR image into single channel
-const double BGR_TO_MONO_WEIGHTS[] = {1.0, 0.0, 0.0}; // Must add up to 1.0
+const double BGR_TO_MONO_WEIGHTS[] = {0.0, 0.0, 1.0}; // Must add up to 1.0
 
 /// Inflation of the eye region in horizontal direction
 const uint8_t ROI_PADDING_HORZIZONTAL = 3;

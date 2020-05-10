@@ -118,6 +118,7 @@ def generate_launch_description():
                         ('pupil_centres', 'rgbd_gaze/pupil_centres'),
                         ('visualisation_markers', 'rgbd_gaze/visualisation_markers'),
                         ('visual_axes', 'rgbd_gaze/visual_axes'),
+                        ('optical_axes', 'rgbd_gaze/optical_axes'),
                         ('compound_gaze', 'rgbd_gaze/compound_gaze')],
         ),
 

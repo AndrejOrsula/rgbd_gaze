@@ -33,7 +33,7 @@
 /// The name of this node
 const std::string NODE_NAME = "rgbd_gaze_calibration_kappa";
 /// Size of the queue size used by the synchronizer in its policy
-const uint8_t SYNCHRONIZER_QUEUE_SIZE = 10;
+const uint8_t SYNCHRONIZER_QUEUE_SIZE = 50;
 
 /// Index of the left eye
 const uint8_t EYE_LEFT = 0;
@@ -94,7 +94,6 @@ double compute_angle(double x1, double y1, double x2, double y2)
   y2 /= norm2;
 
   return std::atan2(x1 * y2 - y1 * x2, x1 * x2 + y1 * y2);
-  // return std::acos((x1 * y1 + x2 * y2) / (std::sqrt(x1 * x1 + x2 * x2) * std::sqrt(y1 * y1 + y2 * y2)));
 }
 
 //////////////////
@@ -109,11 +108,10 @@ public:
   RgbdGazeCalibrationKappa();
 
 private:
-  /// Subscriber to the optical axis
+  /// Subscriber to the head pose
   message_filters::Subscriber<geometry_msgs::msg::PoseStamped> sub_head_pose_;
   /// Subscriber to the optical axis
-  message_filters::Subscriber<gaze_msgs::msg::GazeBinocularStamped>
-      sub_optical_axes_;
+  message_filters::Subscriber<gaze_msgs::msg::GazeBinocularStamped> sub_optical_axes_;
   /// Subscriber to the head pose
   message_filters::Subscriber<geometry_msgs::msg::PointStamped> sub_scene_point_;
   /// Synchronizer of the subscribers

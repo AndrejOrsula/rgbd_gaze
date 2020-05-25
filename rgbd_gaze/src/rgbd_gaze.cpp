@@ -30,7 +30,7 @@
 /// The name of this node
 const std::string NODE_NAME = "rgbd_gaze";
 /// Size of the queue size used by the synchronizer in its policy
-const uint8_t SYNCHRONIZER_QUEUE_SIZE = 10;
+const uint8_t SYNCHRONIZER_QUEUE_SIZE = 50;
 
 /// Index of the left eye
 const uint8_t EYE_LEFT = 0;
@@ -366,73 +366,73 @@ void RgbdGaze::synchronized_callback(const geometry_msgs::msg::PoseStamped::Shar
       }
       default_marker.ns = std::string(this->get_namespace()) + "gaze" + eye_side;
 
-      // Pupil centre
-      {
-        visualization_msgs::msg::Marker pupil_centre_marker = default_marker;
-        pupil_centre_marker.id = 0;
-        pupil_centre_marker.type = visualization_msgs::msg::Marker::SPHERE;
-        pupil_centre_marker.pose.position = Eigen::toMsg(pupil_centres[eye]);
-        pupil_centre_marker.scale.x =
-            pupil_centre_marker.scale.y =
-                pupil_centre_marker.scale.z = VISUAL_PUPIL_CENTRE_SCALE;
-        pupil_centre_marker.color.r = VISUAL_PUPIL_CENTRE_COLOR[0];
-        pupil_centre_marker.color.g = VISUAL_PUPIL_CENTRE_COLOR[1];
-        pupil_centre_marker.color.b = VISUAL_PUPIL_CENTRE_COLOR[2];
-        pupil_centre_marker.color.a = VISUAL_PUPIL_CENTRE_COLOR[3];
-        markers.markers.push_back(pupil_centre_marker);
-      }
+      // // Pupil centre
+      // {
+      //   visualization_msgs::msg::Marker pupil_centre_marker = default_marker;
+      //   pupil_centre_marker.id = 0;
+      //   pupil_centre_marker.type = visualization_msgs::msg::Marker::SPHERE;
+      //   pupil_centre_marker.pose.position = Eigen::toMsg(pupil_centres[eye]);
+      //   pupil_centre_marker.scale.x =
+      //       pupil_centre_marker.scale.y =
+      //           pupil_centre_marker.scale.z = VISUAL_PUPIL_CENTRE_SCALE;
+      //   pupil_centre_marker.color.r = VISUAL_PUPIL_CENTRE_COLOR[0];
+      //   pupil_centre_marker.color.g = VISUAL_PUPIL_CENTRE_COLOR[1];
+      //   pupil_centre_marker.color.b = VISUAL_PUPIL_CENTRE_COLOR[2];
+      //   pupil_centre_marker.color.a = VISUAL_PUPIL_CENTRE_COLOR[3];
+      //   markers.markers.push_back(pupil_centre_marker);
+      // }
 
-      // Eyeball centre
-      {
-        visualization_msgs::msg::Marker eyeball_centremarker = default_marker;
-        eyeball_centremarker.id = 1;
-        eyeball_centremarker.type = visualization_msgs::msg::Marker::SPHERE;
-        eyeball_centremarker.pose.position = Eigen::toMsg(optical_axis[eye].origin());
-        eyeball_centremarker.scale.x =
-            eyeball_centremarker.scale.y =
-                eyeball_centremarker.scale.z = 2 * eye_models_[eye].eyeball_radius;
-        eyeball_centremarker.color.r = VISUAL_EYEBALL_COLOR[0];
-        eyeball_centremarker.color.g = VISUAL_EYEBALL_COLOR[1];
-        eyeball_centremarker.color.b = VISUAL_EYEBALL_COLOR[2];
-        eyeball_centremarker.color.a = VISUAL_EYEBALL_COLOR[3];
-        markers.markers.push_back(eyeball_centremarker);
-      }
+      // // Eyeball centre
+      // {
+      //   visualization_msgs::msg::Marker eyeball_centremarker = default_marker;
+      //   eyeball_centremarker.id = 1;
+      //   eyeball_centremarker.type = visualization_msgs::msg::Marker::SPHERE;
+      //   eyeball_centremarker.pose.position = Eigen::toMsg(optical_axis[eye].origin());
+      //   eyeball_centremarker.scale.x =
+      //       eyeball_centremarker.scale.y =
+      //           eyeball_centremarker.scale.z = 2 * eye_models_[eye].eyeball_radius;
+      //   eyeball_centremarker.color.r = VISUAL_EYEBALL_COLOR[0];
+      //   eyeball_centremarker.color.g = VISUAL_EYEBALL_COLOR[1];
+      //   eyeball_centremarker.color.b = VISUAL_EYEBALL_COLOR[2];
+      //   eyeball_centremarker.color.a = VISUAL_EYEBALL_COLOR[3];
+      //   markers.markers.push_back(eyeball_centremarker);
+      // }
 
-      // Cornea centre
-      {
-        visualization_msgs::msg::Marker cornea_centre_marker = default_marker;
-        cornea_centre_marker.id = 2;
-        cornea_centre_marker.type = visualization_msgs::msg::Marker::SPHERE;
-        cornea_centre_marker.pose.position = Eigen::toMsg(visual_axis[eye].origin());
-        cornea_centre_marker.scale.x =
-            cornea_centre_marker.scale.y =
-                cornea_centre_marker.scale.z = VISUAL_CORNEA_CENTRE_SCALE;
-        cornea_centre_marker.color.r = VISUAL_CORNEA_CENTRE_COLOR[0];
-        cornea_centre_marker.color.g = VISUAL_CORNEA_CENTRE_COLOR[1];
-        cornea_centre_marker.color.b = VISUAL_CORNEA_CENTRE_COLOR[2];
-        cornea_centre_marker.color.a = VISUAL_CORNEA_CENTRE_COLOR[3];
-        markers.markers.push_back(cornea_centre_marker);
-      }
+      // // Cornea centre
+      // {
+      //   visualization_msgs::msg::Marker cornea_centre_marker = default_marker;
+      //   cornea_centre_marker.id = 2;
+      //   cornea_centre_marker.type = visualization_msgs::msg::Marker::SPHERE;
+      //   cornea_centre_marker.pose.position = Eigen::toMsg(visual_axis[eye].origin());
+      //   cornea_centre_marker.scale.x =
+      //       cornea_centre_marker.scale.y =
+      //           cornea_centre_marker.scale.z = VISUAL_CORNEA_CENTRE_SCALE;
+      //   cornea_centre_marker.color.r = VISUAL_CORNEA_CENTRE_COLOR[0];
+      //   cornea_centre_marker.color.g = VISUAL_CORNEA_CENTRE_COLOR[1];
+      //   cornea_centre_marker.color.b = VISUAL_CORNEA_CENTRE_COLOR[2];
+      //   cornea_centre_marker.color.a = VISUAL_CORNEA_CENTRE_COLOR[3];
+      //   markers.markers.push_back(cornea_centre_marker);
+      // }
 
-      // Optical axis
-      {
-        visualization_msgs::msg::Marker optical_axis_marker = default_marker;
-        optical_axis_marker.id = 3;
-        optical_axis_marker.type = visualization_msgs::msg::Marker::ARROW;
-        geometry_msgs::msg::Point start, end;
-        start = Eigen::toMsg(optical_axis[eye].origin());
-        end = Eigen::toMsg(optical_axis[eye].pointAt(VISUAL_OPTICAL_AXIS_LENGTH));
-        optical_axis_marker.points.push_back(start);
-        optical_axis_marker.points.push_back(end);
-        optical_axis_marker.scale.x =
-            optical_axis_marker.scale.y = VISUAL_OPTICAL_AXIS_WIDTH;
-        optical_axis_marker.scale.z = 0;
-        optical_axis_marker.color.r = VISUAL_OPTICAL_AXIS_COLOR[0];
-        optical_axis_marker.color.g = VISUAL_OPTICAL_AXIS_COLOR[1];
-        optical_axis_marker.color.b = VISUAL_OPTICAL_AXIS_COLOR[2];
-        optical_axis_marker.color.a = VISUAL_OPTICAL_AXIS_COLOR[3];
-        markers.markers.push_back(optical_axis_marker);
-      }
+      // // Optical axis
+      // {
+      //   visualization_msgs::msg::Marker optical_axis_marker = default_marker;
+      //   optical_axis_marker.id = 3;
+      //   optical_axis_marker.type = visualization_msgs::msg::Marker::ARROW;
+      //   geometry_msgs::msg::Point start, end;
+      //   start = Eigen::toMsg(optical_axis[eye].origin());
+      //   end = Eigen::toMsg(optical_axis[eye].pointAt(VISUAL_OPTICAL_AXIS_LENGTH));
+      //   optical_axis_marker.points.push_back(start);
+      //   optical_axis_marker.points.push_back(end);
+      //   optical_axis_marker.scale.x =
+      //       optical_axis_marker.scale.y = VISUAL_OPTICAL_AXIS_WIDTH;
+      //   optical_axis_marker.scale.z = 0;
+      //   optical_axis_marker.color.r = VISUAL_OPTICAL_AXIS_COLOR[0];
+      //   optical_axis_marker.color.g = VISUAL_OPTICAL_AXIS_COLOR[1];
+      //   optical_axis_marker.color.b = VISUAL_OPTICAL_AXIS_COLOR[2];
+      //   optical_axis_marker.color.a = VISUAL_OPTICAL_AXIS_COLOR[3];
+      //   markers.markers.push_back(optical_axis_marker);
+      // }
 
       // Visual axis
       {

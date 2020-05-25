@@ -35,6 +35,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(eyelid_contour_msgs REQUIRED)
 find_package(gaze_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 # Eigen
 find_package(Eigen3 REQUIRED)
@@ -49,6 +50,7 @@ include_directories(include ${EIGEN3_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS})
 set(EXECUTABLE_0 rgbd_gaze)
 set(EXECUTABLE_1 calibration_eyeball)
 set(EXECUTABLE_2 calibration_kappa)
+set(EXECUTABLE_3 accuracy)
 
 # Executable 0
 add_executable(${EXECUTABLE_0} src/${EXECUTABLE_0}.cpp)
@@ -77,20 +79,34 @@ ament_target_dependencies(
   visualization_msgs
   eyelid_contour_msgs)
 
-  add_executable(${EXECUTABLE_2} src/${EXECUTABLE_2}.cpp)
-  target_link_libraries(${EXECUTABLE_2} ${EIGEN3_LIBRARIES} ${PCL_LIBRARIES})
-  ament_target_dependencies(
-    ${EXECUTABLE_2}
-    rclcpp
-    message_filters
-    tf2
-    tf2_ros
-    geometry_msgs
-    visualization_msgs
-    gaze_msgs)
+add_executable(${EXECUTABLE_2} src/${EXECUTABLE_2}.cpp)
+target_link_libraries(${EXECUTABLE_2} ${EIGEN3_LIBRARIES} ${PCL_LIBRARIES})
+ament_target_dependencies(
+  ${EXECUTABLE_2}
+  rclcpp
+  message_filters
+  tf2
+  tf2_ros
+  geometry_msgs
+  visualization_msgs
+  gaze_msgs)
+
+add_executable(${EXECUTABLE_3} src/${EXECUTABLE_3}.cpp)
+target_link_libraries(${EXECUTABLE_3} ${EIGEN3_LIBRARIES} ${PCL_LIBRARIES})
+ament_target_dependencies(
+  ${EXECUTABLE_3}
+  rclcpp
+  message_filters
+  tf2
+  tf2_ros
+  geometry_msgs
+  visualization_msgs
+  gaze_msgs
+  std_srvs)
 
 # Install targets
-install(TARGETS ${EXECUTABLE_0} ${EXECUTABLE_1} ${EXECUTABLE_2} DESTINATION lib/${PROJECT_NAME})
+install(TARGETS ${EXECUTABLE_0} ${EXECUTABLE_1} ${EXECUTABLE_2} ${EXECUTABLE_3}
+        DESTINATION lib/${PROJECT_NAME})
 # Install directories
 install(DIRECTORY config launch users DESTINATION share/${PROJECT_NAME})
 

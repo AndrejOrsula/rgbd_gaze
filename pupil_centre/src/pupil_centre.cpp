@@ -29,7 +29,7 @@
 /// The name of this node
 const std::string NODE_NAME = "pupil_centre";
 /// Size of the queue size used by the synchronizer in its policy
-const uint8_t SYNCHRONIZER_QUEUE_SIZE = 2;
+const uint8_t SYNCHRONIZER_QUEUE_SIZE = 50;
 
 /// Index of the left eye
 const uint8_t EYE_LEFT = 0;

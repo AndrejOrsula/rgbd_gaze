@@ -35,7 +35,7 @@
 /// The name of this node
 const std::string NODE_NAME = "rgbd_gaze_calibration_eyeball";
 /// Size of the queue size used by the synchronizer in its policy
-const uint8_t SYNCHRONIZER_QUEUE_SIZE = 10;
+const uint8_t SYNCHRONIZER_QUEUE_SIZE = 50;
 
 /// Index of the left eye
 const uint8_t EYE_LEFT = 0;
